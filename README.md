@@ -82,6 +82,18 @@ The credential grants access to that project only and can be revoked independent
 - Live guide: https://overroot.toni.foo/agent-guide.md
 - OpenAPI: `/api/v1/openapi.json` on the API base link
 
+## Contributing code (people and coding agents)
+
+To change Overroot itself, use GitHub pull requests rather than the project-document API above:
+
+1. Read [`AGENTS.md`](AGENTS.md) and [`CONTRIBUTING.md`](CONTRIBUTING.md) for instructions and required checks.
+2. Create a branch from `main`, or use a fork if you do not have repository write access.
+3. Open a non-draft PR targeting `main`. For a draft, select **Ready for review** when finished. No special label, mention, deployment credential, or separate request to the maintainer's agent is needed.
+
+The host watcher polls about once a minute and queues the PR's exact head and base revisions into the maintainer's existing Pi session. Reviews wait behind current work. The agent reviews correctness and security, and may squash-merge a clean, up-to-date revision after CI and CodeQL pass. Findings, uncertainty, or reviewer account unavailability leave the PR unmerged; changed revisions receive a fresh review. Production deployment then follows the `main` CI gate shown below.
+
+Direct pushes, force pushes, and deletion of `main` are blocked, including for the owner. Only the owner/admin can merge; contributors cannot merge each other's PRs. See [`deploy/REVIEW.md`](deploy/REVIEW.md) for the complete policy.
+
 ## Architecture
 
 ```text
