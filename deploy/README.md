@@ -45,7 +45,7 @@ The first command reports `awaiting-ci` without changing production if no matchi
 
 ## Update contract
 
-The timer checks every three minutes. Only a completed successful `ci.yml` **push** run for the current `main` SHA approves an update; pull-request runs cannot authorize production. CI runs application/updater checks and a real restricted-Docker compilation using nested source files.
+The timer checks every three minutes. GitHub requires PRs, passing CI/CodeQL and owner/admin merging into `main`; [review policy and same-session handoff](REVIEW.md) describe that gate. Only a completed successful `ci.yml` **push** run for the current `main` SHA approves a production update; pull-request runs cannot authorize deployment. CI runs application/updater checks and a real restricted-Docker compilation using nested source files.
 
 The updater fetches into its own bare repository, extracts the approved source, installs locked dependencies, and builds both frontend and backend before touching the running service. It then takes an online backup, stops gracefully, atomically switches `current`, starts the backend and polls `/health`. A success receipt is written only after health passes.
 

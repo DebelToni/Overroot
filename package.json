@@ -12,7 +12,7 @@
     "start": "pnpm --filter @overroot/server start",
     "admin:create": "pnpm --filter @overroot/server admin:create",
     "backup": "node scripts/backup.mjs",
-    "test": "node --test scripts/deploy.test.mjs && pnpm -r test",
+    "test": "node --test scripts/deploy.test.mjs && uv run --no-project python -m unittest discover -s scripts -p test_pr_review.py && pnpm -r test",
     "test:api": "pnpm --filter @overroot/server test",
     "test:compiler": "OVERROOT_TEST_DOCKER=1 pnpm --filter @overroot/server exec vitest run tests/compiler-docker.test.ts",
     "test:web": "pnpm --filter @overroot/web test",

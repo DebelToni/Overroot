@@ -1,0 +1,11 @@
+[Unit]
+Description=Watch Overroot pull requests for same-session owner review
+
+[Timer]
+OnStartupSec=1min
+OnUnitInactiveSec=1min
+Persistent=true
+Unit=overroot-pr-review.service
+
+[Install]
+WantedBy=timers.target
