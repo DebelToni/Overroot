@@ -67,7 +67,7 @@ export async function deploy({ state = join(homedir(), '.local/state/overroot'),
     // Build tools must remain available even though runtime.env sets NODE_ENV=production.
     const env = { ...process.env, NODE_ENV: 'development' };
     await run('pnpm', ['install', '--frozen-lockfile'], { cwd: staging, env });
-    await run('pnpm', ['build'], { cwd: staging, env });
+    await run('pnpm', ['build'], { cwd: staging, env: { ...env, NODE_ENV: 'production' } });
     await rename(staging, release);
 
     await run(process.execPath, [join(release, 'scripts/backup.mjs')], { cwd: release,

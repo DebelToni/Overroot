@@ -40,7 +40,7 @@ async function fixture(t, { runs = [success], fail, healthy = true } = {}) {
     if (step === 'ci') return JSON.stringify({ workflow_runs: runs });
     if (step === 'archive') await writeFile(args.find(a => a.startsWith('--output=')).slice(9), 'fake archive');
     if (['install', 'build'].includes(step)) {
-      assert.equal(options.env.NODE_ENV, 'development');
+      assert.equal(options.env.NODE_ENV, step === 'install' ? 'development' : 'production');
       assert.ok(options.cwd.startsWith(join(state, 'releases', '.')));
     }
     if (step === 'backup' || step === 'stop') assert.equal(await current(), old);
