@@ -24,9 +24,9 @@ describe('workspace layout persistence', () => {
   });
 
   it('ignores invalid editor splits', () => {
-    storage.setItem('underleaf.editorSplit', 'outside');
+    storage.setItem('overroot.editorSplit', 'outside');
     expect(loadEditorPercent(storage)).toBe(50);
-    storage.setItem('underleaf.editorSplit', '90');
+    storage.setItem('overroot.editorSplit', '90');
     expect(loadEditorPercent(storage)).toBe(50);
   });
 });

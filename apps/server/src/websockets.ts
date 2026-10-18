@@ -92,7 +92,7 @@ export class WebSocketGateway {
     try {
       const origin = request.headers.origin;
       if (origin && !config.allowedOrigins.includes(origin)) return reject(socket, 403, 'Origin denied');
-      const url = new URL(request.url ?? '/', 'http://underleaf.local');
+      const url = new URL(request.url ?? '/', 'http://overroot.local');
       if (!url.pathname.startsWith('/ws/')) return;
       const ticket = this.tickets.consume(url.searchParams.get('ticket') ?? '');
       if (!ticket) return reject(socket, 401, 'Invalid ticket');

@@ -115,7 +115,7 @@ export async function buildApp(options: BuildAppOptions = {}) {
     }
     const index = join(config.webDist, 'index.html');
     if (existsSync(index)) return reply.type('text/html').send(await readFile(index));
-    return reply.send({ name: 'UnderLeaf', api: '/api/v1/openapi.json' });
+    return reply.send({ name: 'Overroot', api: '/api/v1/openapi.json' });
   });
 
   app.addHook('onClose', async () => {
@@ -129,4 +129,4 @@ export async function buildApp(options: BuildAppOptions = {}) {
   return { app, context, gateway };
 }
 
-const DEFAULT_AGENT_GUIDE = `# UnderLeaf agent API\n\nFetch the OpenAPI document from \`/api/v1/openapi.json\`. Authenticate with \`Authorization: Bearer <agent-password>\`.\n`;
+const DEFAULT_AGENT_GUIDE = `# Overroot agent API\n\nFetch the OpenAPI document from \`/api/v1/openapi.json\`. Authenticate with \`Authorization: Bearer <agent-password>\`.\n`;

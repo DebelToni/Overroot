@@ -30,7 +30,7 @@ WORKDIR /work
 RUN printf '%s\n' \
   '\documentclass{article}' \
   '\usepackage{amsmath,amssymb,graphicx,xcolor,hyperref}' \
-  '\begin{document}UnderLeaf $x^2$\end{document}' >/tmp/warm.tex \
+  '\begin{document}Overroot $x^2$\end{document}' >/tmp/warm.tex \
   && tectonic -X compile --untrusted --outdir /tmp /tmp/warm.tex \
   && rm -f /tmp/warm.*
 

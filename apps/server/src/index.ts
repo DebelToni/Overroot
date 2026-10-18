@@ -14,7 +14,7 @@ process.once('SIGTERM', () => void shutdown('SIGTERM'));
 
 try {
   await app.listen({ host: config.host, port: config.port });
-  app.log.info(`UnderLeaf is listening at http://${config.host}:${config.port}`);
+  app.log.info(`Overroot is listening at http://${config.host}:${config.port}`);
 } catch (error) {
   app.log.error(error);
   process.exit(1);

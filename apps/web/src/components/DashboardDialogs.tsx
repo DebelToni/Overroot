@@ -91,7 +91,7 @@ export function AccountDialog({ open, onClose, api, username }: { open: boolean;
     finally { setBusy(false); }
   }
   return <Modal open={open} onClose={onClose} title={username} eyebrow="Account" size="small"><form className="stack-form" onSubmit={submit}>
-    <p className="dialog-copy">Your account is local to this UnderLeaf server. No email or two-factor authentication is attached.</p>
+    <p className="dialog-copy">Your account is local to this Overroot server. No email or two-factor authentication is attached.</p>
     <label className="field"><span>Current password</span><input type="password" autoComplete="current-password" value={currentPassword} onChange={(event) => setCurrentPassword(event.target.value)} required/></label>
     <label className="field"><span>New password</span><input type="password" autoComplete="new-password" minLength={8} value={newPassword} onChange={(event) => setNewPassword(event.target.value)} required/></label>
     <label className="field"><span>Confirm new password</span><input type="password" autoComplete="new-password" minLength={8} value={confirmPassword} onChange={(event) => setConfirmPassword(event.target.value)} required/></label>

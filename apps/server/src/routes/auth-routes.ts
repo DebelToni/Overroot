@@ -17,10 +17,10 @@ export function registerAuthRoutes(app: FastifyInstance, context: AppContext): v
     const count = context.db.get<{ count: number }>('SELECT COUNT(*) AS count FROM users')?.count ?? 0;
     return {
       ok: true,
-      name: 'UnderLeaf',
+      name: 'Overroot',
       version: '0.1.0',
       setupRequired: Number(count) === 0,
-      discoveryUrl: config.publicDiscoveryUrl,
+      publicUrl: config.publicUrl,
       serverTime: new Date().toISOString()
     };
   });
@@ -114,12 +114,11 @@ export function registerAuthRoutes(app: FastifyInstance, context: AppContext): v
       expiresAt,
       now.toISOString()
     );
-    const pageRoot = config.publicDiscoveryUrl.replace(/api\.json(?:\?.*)?$/, '');
     return reply.code(201).send({
       id,
       token,
       expiresAt,
-      registrationUrl: `${pageRoot}#/register?invite=${encodeURIComponent(token)}`
+      registrationUrl: `${config.publicUrl}/#/register?invite=${encodeURIComponent(token)}`
     });
   });
 

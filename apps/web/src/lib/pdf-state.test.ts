@@ -32,9 +32,9 @@ describe('PDF view-state preservation', () => {
   });
 
   it('ignores corrupt or out-of-range stored PDF state', () => {
-    storage.setItem('underleaf.pdfView.project-a', '{bad json');
+    storage.setItem('overroot.pdfView.project-a', '{bad json');
     expect(loadStoredPdfViewState('project-a', 1, storage)).toEqual({ scrollTop: 0, scrollLeft: 0, zoom: 1, page: 1 });
-    storage.setItem('underleaf.pdfView.project-a', JSON.stringify({ scrollTop: -1, scrollLeft: 0, zoom: 9, page: 0 }));
+    storage.setItem('overroot.pdfView.project-a', JSON.stringify({ scrollTop: -1, scrollLeft: 0, zoom: 9, page: 0 }));
     expect(loadStoredPdfViewState('project-a', 1, storage)).toEqual({ scrollTop: 0, scrollLeft: 0, zoom: 1, page: 1 });
   });
 });

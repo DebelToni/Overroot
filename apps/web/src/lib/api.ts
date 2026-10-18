@@ -46,7 +46,7 @@ export class ApiClient {
       response = await fetch(this.url(path), { ...init, headers });
     } catch {
       this.onNetworkError?.();
-      throw new ApiError(0, 'network_error', 'The UnderLeaf server could not be reached');
+      throw new ApiError(0, 'network_error', 'The Overroot server could not be reached');
     }
     if (response.status === 401) this.onUnauthorized?.();
     if (!response.ok) throw await parseError(response);
@@ -63,7 +63,7 @@ export class ApiClient {
       response = await fetch(this.url(path), { headers });
     } catch {
       this.onNetworkError?.();
-      throw new ApiError(0, 'network_error', 'The UnderLeaf server could not be reached');
+      throw new ApiError(0, 'network_error', 'The Overroot server could not be reached');
     }
     if (response.status === 401) this.onUnauthorized?.();
     if (!response.ok) throw await parseError(response);

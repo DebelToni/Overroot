@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import type { ThemePreference } from '../types';
 
-const STORAGE_KEY = 'underleaf.theme';
+const STORAGE_KEY = 'overroot.theme';
 
 export function useTheme() {
   const [preference, setPreferenceState] = useState<ThemePreference>(() => {

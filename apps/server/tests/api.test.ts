@@ -18,8 +18,9 @@ interface Harness {
 let harness: Harness | undefined;
 
 beforeEach(async () => {
-  const dir = await mkdtemp(join(tmpdir(), 'underleaf-test-'));
+  const dir = await mkdtemp(join(tmpdir(), 'overroot-test-'));
   config.fakeCompiler = true;
+  config.publicUrl = 'https://overroot.toni.foo';
   const built = await buildApp({ databasePath: join(dir, 'test.sqlite3'), logger: false });
   await built.context.auth.createUser('admin', 'correct-horse-battery-staple', true);
   const login = await built.app.inject({
@@ -41,7 +42,20 @@ function bearer(token: string) {
   return { authorization: `Bearer ${token}` };
 }
 
-describe('UnderLeaf API', () => {
+describe('Overroot API', () => {
+  it('reports the canonical public URL and API contract', async () => {
+    const { app } = harness!;
+    const status = await app.inject({ method: 'GET', url: '/api/v1/status' });
+    expect(status.statusCode).toBe(200);
+    expect(status.json().publicUrl).toBe('https://overroot.toni.foo');
+    expect(status.json()).not.toHaveProperty('discoveryUrl');
+    const { openapi } = await import('../src/openapi.js');
+    expect(openapi.servers[0].url).toBe('https://overroot.toni.foo');
+    expect(openapi.externalDocs.url).toBe('https://overroot.toni.foo/agent-guide.md');
+    expect(openapi.components.schemas.Status.required).toContain('publicUrl');
+    expect(JSON.stringify(openapi).toLowerCase()).not.toContain('discovery');
+  });
+
   it('supports invite-only accounts and project sharing', async () => {
     const { app, adminToken } = harness!;
     const inviteResponse = await app.inject({
@@ -52,6 +66,7 @@ describe('UnderLeaf API', () => {
     });
     expect(inviteResponse.statusCode).toBe(201);
     const invite = inviteResponse.json();
+    expect(invite.registrationUrl).toBe(`https://overroot.toni.foo/#/register?invite=${encodeURIComponent(invite.token)}`);
 
     const registration = await app.inject({
       method: 'POST',
@@ -92,6 +107,11 @@ describe('UnderLeaf API', () => {
       payload: { name: 'Pi test agent' }
     });
     expect(credential.statusCode).toBe(201);
+    expect(credential.json().access).toMatchObject({
+      link: 'https://overroot.toni.foo',
+      guide: 'https://overroot.toni.foo/agent-guide.md',
+      projectHash: project.hash
+    });
     const agentPassword = credential.json().access.password as string;
 
     const context = await app.inject({ method: 'GET', url: '/api/v1/agent/context', headers: bearer(agentPassword) });

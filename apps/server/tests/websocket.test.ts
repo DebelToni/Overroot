@@ -17,7 +17,7 @@ const MESSAGE_FLUSH_ACK = 3;
 
  describe('collaboration WebSocket', () => {
   it('orders edits, flush acknowledgement, agent replacement, and compilation', async () => {
-    const dir = await mkdtemp(join(tmpdir(), 'underleaf-websocket-'));
+    const dir = await mkdtemp(join(tmpdir(), 'overroot-websocket-'));
     config.fakeCompiler = true;
     const { app, context } = await buildApp({ databasePath: join(dir, 'state.sqlite3'), logger: false });
     try {

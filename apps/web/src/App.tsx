@@ -4,7 +4,7 @@ import { Navigate, Route, Routes } from 'react-router-dom';
 import { Brand } from './components/Brand';
 import { LoadingBlock } from './components/Feedback';
 import { ApiError } from './lib/api';
-import { resolveApiBase } from './lib/discovery';
+import { resolveApiBase } from './lib/api-base';
 import { SessionProvider, useSession } from './lib/session';
 
 const AuthPage = lazy(() => import('./pages/AuthPage').then((module) => ({ default: module.AuthPage })));
@@ -18,22 +18,20 @@ export function App() {
   useEffect(() => {
     let active = true;
     setOffline(null);
-    const envBase = import.meta.env.VITE_API_BASE || (import.meta.env.DEV ? 'http://127.0.0.1:4317' : undefined);
-    const discoveryUrl = new URL('api.json', `${window.location.origin}${import.meta.env.BASE_URL}`).toString();
-    void resolveApiBase({ envBase, discoveryUrl }).then((base) => { if (active) setApiBase(base); }).catch((error) => {
+    void resolveApiBase({ envBase: import.meta.env.VITE_API_BASE, dev: import.meta.env.DEV, origin: window.location.origin }).then((base) => { if (active) setApiBase(base); }).catch((error) => {
       if (active) setOffline(error instanceof Error ? error.message : 'The server is offline');
     });
     return () => { active = false; };
   }, [attempt]);
 
-  const rediscover = useCallback(() => {
+  const reconnect = useCallback(() => {
     setApiBase(null);
     setAttempt((value) => value + 1);
   }, []);
 
   if (!apiBase && !offline) return <BootScreen/>;
   if (!apiBase) return <OfflineScreen message={offline!} retry={() => setAttempt((value) => value + 1)}/>;
-  return <SessionProvider apiBase={apiBase} onNetworkError={rediscover}><SessionGate/></SessionProvider>;
+  return <SessionProvider apiBase={apiBase} onNetworkError={reconnect}><SessionGate/></SessionProvider>;
 }
 
 function SessionGate() {
@@ -49,7 +47,7 @@ function SessionGate() {
     return () => { active = false; };
   }, [api, token, setUser, clearSession]);
   if (checking) return <BootScreen label="Opening your workspace"/>;
-  return <Suspense fallback={<BootScreen label="Opening UnderLeaf"/>}><Routes>
+  return <Suspense fallback={<BootScreen label="Opening Overroot"/>}><Routes>
     <Route path="/login" element={token && user ? <Navigate to="/" replace/> : <AuthPage mode="login"/>}/>
     <Route path="/register" element={token && user ? <Navigate to="/" replace/> : <AuthPage mode="register"/>}/>
     <Route path="/" element={token && user ? <DashboardPage/> : <Navigate to="/login" replace/>}/>
@@ -63,5 +61,5 @@ function BootScreen({ label = 'Finding the local server' }: { label?: string }) 
 }
 
 function OfflineScreen({ message, retry }: { message: string; retry: () => void }) {
-  return <div className="offline-screen"><Brand/><div className="offline-card"><ServerOff size={28}/><div className="eyebrow">Server sleeping</div><h1>UnderLeaf is offline.</h1><p>{message}. The documents remain safely on the host machine.</p><button type="button" className="primary-button" onClick={retry}><RefreshCw size={15}/> Try again</button></div></div>;
+  return <div className="offline-screen"><Brand/><div className="offline-card"><ServerOff size={28}/><div className="eyebrow">Server sleeping</div><h1>Overroot is offline.</h1><p>{message}. The documents remain safely on the host machine.</p><button type="button" className="primary-button" onClick={retry}><RefreshCw size={15}/> Try again</button></div></div>;
 }

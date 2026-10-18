@@ -1,0 +1,18 @@
+[Unit]
+Description=Overroot web application
+After=network-online.target
+
+[Service]
+Type=simple
+Environment=PATH=/home/xaj/.local/bin:/usr/local/bin:/usr/bin:/bin
+EnvironmentFile=%h/.config/overroot/runtime.env
+WorkingDirectory=%h/.local/state/overroot/current
+ExecStart=/home/xaj/.local/bin/node apps/server/dist/index.js
+Restart=on-failure
+RestartSec=5s
+TimeoutStopSec=90s
+KillMode=control-group
+UMask=0077
+
+[Install]
+WantedBy=default.target

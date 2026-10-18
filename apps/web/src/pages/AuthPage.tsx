@@ -48,18 +48,18 @@ export function AuthPage({ mode }: { mode: 'login' | 'register' }) {
       <section className="auth-panel" aria-labelledby="auth-title">
         <div className="auth-panel__label"><KeyRound size={14}/>{mode === 'login' ? 'MEMBER ACCESS' : 'USE INVITATION'}</div>
         <h2 id="auth-title">{mode === 'login' ? 'Welcome back.' : 'Create your account.'}</h2>
-        <p>{mode === 'login' ? 'Enter your local UnderLeaf account.' : 'No email or two-factor setup—just a username and password.'}</p>
+        <p>{mode === 'login' ? 'Enter your local Overroot account.' : 'No email or two-factor setup—just a username and password.'}</p>
         {setupRequired && mode === 'login' && <div className="setup-note"><strong>First-time setup is required.</strong><span>Create the administrator from the local terminal with <code>pnpm admin:create</code>.</span></div>}
         <form onSubmit={submit} className="auth-form">
           {mode === 'register' && <label className="field"><span>Invitation</span><input value={invite} onChange={(event) => setInvite(event.target.value)} required autoComplete="off"/></label>}
           <label className="field"><span>Username</span><input value={username} onChange={(event) => setUsername(event.target.value)} required minLength={3} maxLength={32} autoComplete="username" autoFocus={mode === 'login'}/></label>
           <label className="field"><span>Password</span><input type="password" value={password} onChange={(event) => setPassword(event.target.value)} required minLength={8} autoComplete={mode === 'login' ? 'current-password' : 'new-password'}/></label>
           <InlineError message={error}/>
-          <button className="primary-button primary-button--wide" type="submit" disabled={busy}>{busy ? 'Please wait…' : mode === 'login' ? <>Sign in <ArrowRight size={15}/></> : <>Join UnderLeaf <ArrowRight size={15}/></>}</button>
+          <button className="primary-button primary-button--wide" type="submit" disabled={busy}>{busy ? 'Please wait…' : mode === 'login' ? <>Sign in <ArrowRight size={15}/></> : <>Join Overroot <ArrowRight size={15}/></>}</button>
         </form>
         <div className="auth-switch">{mode === 'login' ? <>Have an invitation? <Link to="/register">Create an account</Link></> : <>Already a member? <Link to="/login">Sign in</Link></>}</div>
       </section>
     </main>
-    <footer className="auth-footer"><span>INVITE-ONLY · SELF-HOSTED</span><span>UnderLeaf is independent and unaffiliated with other LaTeX services.</span></footer>
+    <footer className="auth-footer"><span>INVITE-ONLY · SELF-HOSTED</span><span>Overroot is independent and unaffiliated with other LaTeX services.</span></footer>
   </div>;
 }

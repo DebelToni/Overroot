@@ -1,11 +1,11 @@
 import { defineConfig } from 'vite';
 import react from '@vitejs/plugin-react';
 
-export default defineConfig(({ command, mode }) => ({
+export default defineConfig(() => ({
   plugins: [react()],
-  base: command === 'serve' ? '/' : '/UnderLeaf/',
+  base: '/',
   build: {
-    outDir: mode === 'pages' ? '../../docs' : 'dist',
+    outDir: 'dist',
     emptyOutDir: true,
     sourcemap: true
   },

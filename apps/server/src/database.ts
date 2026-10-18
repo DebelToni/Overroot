@@ -6,7 +6,7 @@ import { config } from './config.js';
 export class Database {
   readonly raw: DatabaseSync;
 
-  constructor(path = `${config.dataDir}/underleaf.sqlite3`) {
+  constructor(path = `${config.dataDir}/overroot.sqlite3`) {
     mkdirSync(dirname(path), { recursive: true, mode: 0o700 });
     this.raw = new DatabaseSync(path);
     if (path !== ':memory:') chmodSync(path, 0o600);
@@ -25,7 +25,7 @@ export class Database {
 
   private migrate(): void {
     const version = Number(this.raw.prepare('PRAGMA user_version').get()?.user_version ?? 0);
-    if (version > 2) throw new Error(`Database schema ${version} is newer than this UnderLeaf build`);
+    if (version > 2) throw new Error(`Database schema ${version} is newer than this Overroot build`);
     if (version === 0) {
       this.raw.exec(`
         BEGIN IMMEDIATE;

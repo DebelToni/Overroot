@@ -1,0 +1,11 @@
+[Unit]
+Description=Deploy CI-approved Overroot main
+After=network-online.target
+
+[Service]
+Type=oneshot
+EnvironmentFile=%h/.config/overroot/runtime.env
+Environment=PATH=/home/xaj/.local/bin:/usr/local/bin:/usr/bin:/bin
+ExecStart=/home/xaj/.local/bin/node %h/.local/lib/overroot/deploy.mjs
+TimeoutStartSec=30min
+UMask=0077

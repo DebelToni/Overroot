@@ -1,5 +1,5 @@
-const TREE_OPEN_KEY = 'underleaf.fileTreeOpen';
-const EDITOR_PERCENT_KEY = 'underleaf.editorSplit';
+const TREE_OPEN_KEY = 'overroot.fileTreeOpen';
+const EDITOR_PERCENT_KEY = 'overroot.editorSplit';
 type StateStorage = Pick<Storage, 'getItem' | 'setItem'>;
 
 export const MIN_EDITOR_PERCENT = 25;

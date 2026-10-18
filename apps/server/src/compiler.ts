@@ -1,6 +1,6 @@
 import { randomUUID } from 'node:crypto';
 import { chmod, copyFile, mkdir, readFile, realpath, rename, rm, stat, writeFile } from 'node:fs/promises';
-import { basename, dirname, extname, join, relative, resolve } from 'node:path';
+import { basename, extname, join, relative, resolve } from 'node:path';
 import { spawn } from 'node:child_process';
 import { config, repoRoot } from './config.js';
 import type { CollaborationManager, EventHub } from './collaboration.js';
@@ -47,6 +47,8 @@ export class Compiler {
 
   async initialize(): Promise<void> {
     await mkdir(this.jobsDir, { recursive: true, mode: 0o700 });
+    // The isolated compiler UID needs traversal; the private data directory still protects host access.
+    await chmod(this.jobsDir, 0o711);
     await mkdir(this.cacheDir, { recursive: true, mode: 0o700 });
     const now = new Date().toISOString();
     this.db.run(
@@ -202,16 +204,22 @@ export class Compiler {
     this.events.emit(project.id, { type: 'compile.started', job: { ...publicCompileJob(job), status: 'compiling', startedAt } });
 
     const workDir = join(this.jobsDir, job.id);
-    const outputDir = join(workDir, '.underleaf-output');
+    const outputDir = join(workDir, '.overroot-output');
     try {
       await mkdir(outputDir, { recursive: true });
       for (const file of this.store.listFiles(project.id)) {
         const destination = join(workDir, file.path);
         if (!resolve(destination).startsWith(`${resolve(workDir)}/`)) throw new Error('Unsafe project path');
-        await mkdir(dirname(destination), { recursive: true });
+        let directory = workDir;
+        for (const part of file.path.split('/').slice(0, -1)) {
+          directory = join(directory, part);
+          await mkdir(directory, { recursive: true });
+          await chmod(directory, 0o755);
+        }
         await writeFile(destination, file.content);
+        await chmod(destination, 0o644);
       }
-      await chmod(workDir, 0o777);
+      await chmod(workDir, 0o755);
       await chmod(outputDir, 0o777);
 
       let output: CommandResult;
@@ -240,7 +248,7 @@ export class Compiler {
             '--synctex',
             '--keep-logs',
             '--outdir',
-            '.underleaf-output',
+            '.overroot-output',
             '--',
             project.entry_file
           ],
@@ -326,7 +334,7 @@ export class Compiler {
     const inspect = await command('docker', ['inspect', config.dockerContainer], 15_000);
     if (inspect.code === 0 && workerMatches(inspect.stdout, image.stdout, jobsMountDir)) return;
     if (inspect.code === 0) await command('docker', ['rm', '-f', config.dockerContainer], 20_000);
-    await command('docker', ['volume', 'create', 'underleaf-tectonic-cache'], 20_000);
+    await command('docker', ['volume', 'create', 'overroot-tectonic-cache'], 20_000);
     const started = await command(
       'docker',
       [
@@ -345,7 +353,7 @@ export class Compiler {
         '--tmpfs',
         '/tmp:rw,nosuid,nodev,size=256m',
         '-v',
-        'underleaf-tectonic-cache:/var/cache/tectonic',
+        'overroot-tectonic-cache:/var/cache/tectonic',
         '-v',
         `${jobsMountDir}:/work:rw`,
         config.dockerImage

@@ -199,10 +199,10 @@ export function registerProjectRoutes(app: FastifyInstance, context: AppContext)
     return reply.code(201).send({
       agent: { id, name: input.name, createdAt: now },
       access: {
-        link: config.publicDiscoveryUrl,
+        link: config.publicUrl,
         projectHash: access.project.public_hash,
         password,
-        guide: config.publicDiscoveryUrl.replace(/api\.json(?:\?.*)?$/, 'agent-guide.md')
+        guide: `${config.publicUrl}/agent-guide.md`
       }
     });
   });

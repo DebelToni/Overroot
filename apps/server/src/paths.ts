@@ -14,7 +14,7 @@ export function normalizeProjectPath(input: string): string {
   const parts = normalized.split('/');
   if (
     parts.some((part) => !part || part === '.' || part === '..' || part.startsWith('-') || part.length > 100) ||
-    parts[0] === '.underleaf-output'
+    parts[0] === '.overroot-output'
   ) {
     throw new Error('Invalid project path');
   }

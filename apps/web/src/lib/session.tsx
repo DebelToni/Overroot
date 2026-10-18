@@ -2,7 +2,7 @@ import { createContext, useCallback, useContext, useMemo, useState, type ReactNo
 import { ApiClient } from './api';
 import type { User } from '../types';
 
-const SESSION_KEY = 'underleaf.session';
+const SESSION_KEY = 'overroot.session';
 
 interface SessionContextValue {
   api: ApiClient;

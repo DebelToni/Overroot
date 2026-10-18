@@ -1,0 +1,10 @@
+[Unit]
+Description=Daily Overroot backup
+
+[Service]
+Type=oneshot
+EnvironmentFile=%h/.config/overroot/runtime.env
+WorkingDirectory=%h/.local/state/overroot/current
+ExecStart=/home/xaj/.local/bin/node scripts/backup.mjs
+TimeoutStartSec=30min
+UMask=0077

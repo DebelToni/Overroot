@@ -1,5 +1,5 @@
 {
-  "name": "@underleaf/web",
+  "name": "@overroot/web",
   "version": "0.1.0",
   "private": true,
   "type": "module",
@@ -7,7 +7,6 @@
   "scripts": {
     "dev": "vite",
     "build": "vite build",
-    "build:pages": "vite build --mode pages --outDir ../../docs",
     "test": "vitest run",
     "lint": "eslint src --max-warnings=0",
     "typecheck": "tsc -p tsconfig.json --noEmit"

@@ -1,0 +1,12 @@
+[Unit]
+Description=Overroot Cloudflare Tunnel
+After=network-online.target
+
+[Service]
+ExecStart=/home/xaj/.local/bin/cloudflared tunnel --no-autoupdate --metrics 127.0.0.1:20417 run --token-file %h/.config/overroot/tunnel-token
+Restart=on-failure
+RestartSec=5s
+UMask=0077
+
+[Install]
+WantedBy=default.target

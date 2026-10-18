@@ -10,7 +10,7 @@ import { ProjectStore } from '../src/project-store.js';
 
  describe('persistent Yjs state', () => {
   it('keeps causal identities across a backend restart', async () => {
-    const dir = await mkdtemp(join(tmpdir(), 'underleaf-y-state-'));
+    const dir = await mkdtemp(join(tmpdir(), 'overroot-y-state-'));
     const path = join(dir, 'state.sqlite3');
     try {
       const firstDb = new Database(path);

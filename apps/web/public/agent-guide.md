@@ -1,12 +1,10 @@
-# UnderLeaf agent access
+# Overroot agent access
 
-The project owner gives you three values:
+Guide: https://overroot.toni.foo/agent-guide.md
 
-1. a stable discovery link,
-2. an opaque project hash,
-3. a project-scoped agent password.
+The API base is `https://overroot.toni.foo`. The project owner gives you an opaque project hash and a project-scoped agent password.
 
-Fetch the discovery link with caching disabled. Read `apiBase` from its JSON and stop if `online` is false. Fetch `${apiBase}/api/v1/openapi.json`, then authenticate every API request with:
+Check `GET /api/v1/status` before proceeding. Fetch `https://overroot.toni.foo/api/v1/openapi.json`, then authenticate every API request with:
 
 ```text
 Authorization: Bearer <agent-password>
@@ -15,9 +13,9 @@ Authorization: Bearer <agent-password>
 Bootstrap with `GET /api/v1/agent/context`; verify its project hash, then list files:
 
 ```bash
-DISCOVERY='https://debeltoni.github.io/UnderLeaf/api.json'
+API='https://overroot.toni.foo'
 PASSWORD='ul_agent_...'
-API="$(curl -fsS -H 'Cache-Control: no-cache' "$DISCOVERY?ts=$(date +%s)" | jq -r '.apiBase')"
+curl -fsS "$API/api/v1/status"
 curl -fsS -H "Authorization: Bearer $PASSWORD" "$API/api/v1/agent/context"
 ```
 

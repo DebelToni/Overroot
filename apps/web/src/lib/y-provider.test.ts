@@ -64,7 +64,7 @@ describe('TicketedYProvider', () => {
     vi.stubGlobal('WebSocket', FakeWebSocket);
     const api = {
       createWsTicket: vi.fn().mockResolvedValue({ ticket: 'ticket', path: '/file', expiresAt: '' }),
-      websocketUrl: vi.fn(() => 'wss://underleaf.test/file')
+      websocketUrl: vi.fn(() => 'wss://overroot.test/file')
     } as unknown as ApiClient;
     const doc = new Y.Doc();
     const provider = new TicketedYProvider(api, 'project', 'file', doc);

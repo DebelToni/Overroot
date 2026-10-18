@@ -1,4 +1,4 @@
-const STORAGE_PREFIX = 'underleaf.pdfView.';
+const STORAGE_PREFIX = 'overroot.pdfView.';
 type StateStorage = Pick<Storage, 'getItem' | 'setItem'>;
 
 export interface PdfViewState {

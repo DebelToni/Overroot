@@ -230,7 +230,7 @@ export function WorkspacePage() {
       const url = URL.createObjectURL(new Blob([result.data], { type: 'application/zip' }));
       const anchor = document.createElement('a');
       anchor.href = url;
-      anchor.download = result.filename ?? `${project?.name ?? 'underleaf-project'}.zip`;
+      anchor.download = result.filename ?? `${project?.name ?? 'overroot-project'}.zip`;
       anchor.click();
       setTimeout(() => URL.revokeObjectURL(url), 1000);
     } catch (reason) {

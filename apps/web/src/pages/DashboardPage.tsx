@@ -88,7 +88,7 @@ export function DashboardPage() {
         </div>}
       </section>
     </main>
-    <footer className="dashboard-footer"><span>UNDERLEAF · PRIVATE OPEN-SOURCE STUDIO</span><a href="https://github.com/DebelToni/UnderLeaf" target="_blank" rel="noreferrer">Source</a></footer>
+    <footer className="dashboard-footer"><span>OVERROOT · PRIVATE OPEN-SOURCE STUDIO</span><a href="https://github.com/DebelToni/Overroot" target="_blank" rel="noreferrer">Source</a></footer>
     <NewProjectDialog open={newOpen} templates={templates} onClose={() => setNewOpen(false)} onCreate={create}/>
     {user?.isAdmin && <InvitesDialog open={invitesOpen} onClose={() => setInvitesOpen(false)} api={api}/>}
     {user && <AccountDialog open={accountOpen} onClose={() => setAccountOpen(false)} api={api} username={user.username}/>} 

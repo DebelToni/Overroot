@@ -1,0 +1,11 @@
+[Unit]
+Description=Check Overroot deployment every three minutes
+
+[Timer]
+OnStartupSec=2min
+OnUnitActiveSec=3min
+Persistent=true
+Unit=overroot-deploy.service
+
+[Install]
+WantedBy=timers.target

@@ -233,7 +233,7 @@ export class ProjectStore {
 
   sourceHash(projectId: string, context: string[] = []): string {
     const hash = createHash('sha256');
-    hash.update('underleaf-compile-cache-v2\0');
+    hash.update('overroot-compile-cache-v2\0');
     for (const value of context) {
       hash.update(value);
       hash.update('\0');

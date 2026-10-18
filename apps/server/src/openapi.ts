@@ -15,16 +15,16 @@ const binary = (description: string, contentType: string) => ({
 export const openapi = {
   openapi: '3.1.0',
   info: {
-    title: 'UnderLeaf Agent API',
+    title: 'Overroot Agent API',
     version: '0.1.0',
     description:
-      'Project-scoped, revision-safe REST access. Resolve the current API base from the stable discovery JSON, use the agent password as a Bearer token, and send If-Match on every mutation of an existing file.'
+      'Project-scoped, revision-safe REST access. Use the agent password as a Bearer token, and send If-Match on every mutation of an existing file.'
   },
   externalDocs: {
-    description: 'Stable agent guide and discovery contract',
-    url: config.publicDiscoveryUrl.replace(/api\.json(?:\?.*)?$/, 'agent-guide.md')
+    description: 'Agent guide',
+    url: `${config.publicUrl}/agent-guide.md`
   },
-  servers: [{ url: '/', description: 'Current backend returned by the discovery document' }],
+  servers: [{ url: config.publicUrl, description: 'Overroot frontend and API' }],
   security: auth,
   tags: [{ name: 'Agent' }, { name: 'Projects' }, { name: 'Files' }, { name: 'Compile' }],
   paths: {
@@ -156,7 +156,7 @@ export const openapi = {
   },
   components: {
     securitySchemes: {
-      bearerAuth: { type: 'http', scheme: 'bearer', bearerFormat: 'UnderLeaf project agent password' }
+      bearerAuth: { type: 'http', scheme: 'bearer', bearerFormat: 'Overroot project agent password' }
     },
     schemas: {
       ErrorEnvelope: {
@@ -164,15 +164,10 @@ export const openapi = {
           error: { type: 'object', required: ['code', 'message'], properties: { code: { type: 'string' }, message: { type: 'string' }, details: {} } }
         }
       },
-      DiscoveryDocument: {
-        type: 'object', required: ['online', 'apiBase', 'updatedAt'], properties: {
-          online: { type: 'boolean' }, apiBase: { type: 'string', format: 'uri' }, updatedAt: { type: ['string', 'null'], format: 'date-time' }
-        }, example: { online: true, apiBase: 'https://example.trycloudflare.com', updatedAt: '2026-07-30T20:00:00.000Z' }
-      },
       Status: {
-        type: 'object', required: ['ok', 'name', 'version', 'setupRequired', 'discoveryUrl', 'serverTime'], properties: {
+        type: 'object', required: ['ok', 'name', 'version', 'setupRequired', 'publicUrl', 'serverTime'], properties: {
           ok: { type: 'boolean' }, name: { type: 'string' }, version: { type: 'string' }, setupRequired: { type: 'boolean' },
-          discoveryUrl: { type: 'string', format: 'uri' }, serverTime: { type: 'string', format: 'date-time' }
+          publicUrl: { type: 'string', format: 'uri' }, serverTime: { type: 'string', format: 'date-time' }
         }
       },
       Project: {

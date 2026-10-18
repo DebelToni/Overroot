@@ -191,7 +191,7 @@ export function registerFileRoutes(app: FastifyInstance, context: AppContext): v
     const entries: Record<string, Uint8Array> = {};
     for (const file of context.projects.listFiles(access.project.id)) entries[file.path] = Buffer.from(file.content);
     const zip = zipSync(entries, { level: 6 });
-    const safeName = access.project.name.replace(/[^a-zA-Z0-9_.-]+/g, '-').replace(/^-|-$/g, '') || 'underleaf-project';
+    const safeName = access.project.name.replace(/[^a-zA-Z0-9_.-]+/g, '-').replace(/^-|-$/g, '') || 'overroot-project';
     return reply
       .header('Content-Disposition', `attachment; filename="${safeName}.zip"`)
       .type('application/zip')

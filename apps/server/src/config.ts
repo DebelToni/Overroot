@@ -25,23 +25,22 @@ function bool(name: string, fallback: boolean): boolean {
   return value === '1' || value.toLowerCase() === 'true';
 }
 
-const configuredDataDir = process.env.UNDERLEAF_DATA_DIR ?? './data';
+const configuredDataDir = process.env.OVERROOT_DATA_DIR ?? './data';
 export const config = {
-  host: process.env.UNDERLEAF_HOST ?? '127.0.0.1',
-  port: integer('UNDERLEAF_PORT', 4317),
+  host: process.env.OVERROOT_HOST ?? '127.0.0.1',
+  port: integer('OVERROOT_PORT', 4317),
   dataDir: isAbsolute(configuredDataDir) ? configuredDataDir : resolve(repoRoot, configuredDataDir),
-  allowedOrigins: (process.env.UNDERLEAF_ALLOWED_ORIGINS ?? 'http://localhost:5173,http://127.0.0.1:5173,http://localhost:4173,http://127.0.0.1:4173,https://debeltoni.github.io')
+  allowedOrigins: (process.env.OVERROOT_ALLOWED_ORIGINS ?? 'http://localhost:5173,http://127.0.0.1:5173,http://localhost:4173,http://127.0.0.1:4173,https://overroot.toni.foo')
     .split(',')
     .map((origin) => origin.trim())
     .filter(Boolean),
-  publicDiscoveryUrl:
-    process.env.UNDERLEAF_PUBLIC_DISCOVERY_URL ?? 'https://debeltoni.github.io/UnderLeaf/api.json',
-  sessionDays: integer('UNDERLEAF_SESSION_DAYS', 30),
-  compileTimeoutSeconds: integer('UNDERLEAF_COMPILE_TIMEOUT_SECONDS', 45),
-  dockerImage: process.env.UNDERLEAF_DOCKER_IMAGE ?? 'underleaf-tectonic:0.16.9',
-  dockerContainer: process.env.UNDERLEAF_DOCKER_CONTAINER ?? 'underleaf-tectonic-worker',
-  fakeCompiler: bool('UNDERLEAF_FAKE_COMPILER', false),
-  trustProxy: bool('UNDERLEAF_TRUST_PROXY', true),
+  publicUrl: (process.env.OVERROOT_PUBLIC_URL ?? 'https://overroot.toni.foo').replace(/\/+$/, ''),
+  sessionDays: integer('OVERROOT_SESSION_DAYS', 30),
+  compileTimeoutSeconds: integer('OVERROOT_COMPILE_TIMEOUT_SECONDS', 45),
+  dockerImage: process.env.OVERROOT_DOCKER_IMAGE ?? 'overroot-tectonic:0.16.9',
+  dockerContainer: process.env.OVERROOT_DOCKER_CONTAINER ?? 'overroot-tectonic-worker',
+  fakeCompiler: bool('OVERROOT_FAKE_COMPILER', false),
+  trustProxy: bool('OVERROOT_TRUST_PROXY', true),
   webDist: resolve(repoRoot, 'apps/web/dist'),
   dockerfileDir: resolve(repoRoot, 'docker/tectonic')
 };

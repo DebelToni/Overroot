@@ -1,0 +1,10 @@
+[Unit]
+Description=Back up Overroot daily
+
+[Timer]
+OnCalendar=*-*-* 03:00:00
+Persistent=true
+Unit=overroot-backup.service
+
+[Install]
+WantedBy=timers.target

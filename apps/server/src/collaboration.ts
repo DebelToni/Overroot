@@ -138,7 +138,7 @@ export class CollaborationManager {
     active.doc.transact(() => {
       active.text.delete(0, active.text.length);
       active.text.insert(0, content);
-    }, { underleaf: true, actor });
+    }, { overroot: true, actor });
     const saved = await this.flush(active, true);
     if (active.clients.size === 0) this.scheduleEviction(active);
     return saved;
