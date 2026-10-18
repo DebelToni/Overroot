@@ -194,7 +194,7 @@ def tick(config, root=ROOT, selected=None, now=None):
         pending.pop('requestId', None)
         pending.pop('acceptedAt', None)
     if 'requestId' not in pending:
-        pending['requestId'] = str(uuid.uuid5(uuid.NAMESPACE_URL, REPO + pending['key'] + ':' + str(pending['attempt'])))
+        pending['requestId'] = str(uuid.uuid4())
     pending['lastAttemptAt'] = now
     save(state_path, state)  # Persist retry identity BEFORE any potentially ambiguous socket send.
     reply = request(meta, '/action', {'type': 'prompt', 'sessionId': config['sessionId'],
@@ -227,7 +227,9 @@ def main():
                 raise ValueError('Invalid review acknowledgement')
             state = load(ROOT / 'state.json')
             record = state['reviews'][args[1]]
-            if record['status'] in TERMINAL:
+            # The poller can observe GitHub closure between merge and this acknowledgement.
+            late_merge = command == 'finish' and args[2] == 'merged' and record['status'] == 'closed'
+            if record['status'] in TERMINAL and not late_merge:
                 print('Request is already ' + record['status'] + '; do not review or merge its stale revision')
                 return
             if command == 'ack':

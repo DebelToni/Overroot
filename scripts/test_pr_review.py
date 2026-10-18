@@ -110,6 +110,40 @@ class Reviews(unittest.TestCase):
         self.tick([review.pull_request(raw(draft=True))], now=1200)
         self.tick(now=1400)
         self.assertEqual(len(self.calls), 2)
+        self.assertNotEqual(self.calls[0]['requestId'], self.calls[1]['requestId'])
+
+    def test_late_merge_result_survives_timer_observing_pr_closure(self):
+        self.tick()
+        state = review.load(self.root / 'state.json')
+        state['reviews'][self.pull['key']].update(receivedAt=1001, status='reviewing')
+        review.save(self.root / 'state.json', state)
+        self.tick([], now=1100)
+        self.assertEqual(self.record()['status'], 'closed')
+        actual = {'merged': True, 'head': {'sha': HEAD}}
+        with patch.object(review, 'ROOT', self.root), \
+                patch.object(review.sys, 'argv', ['pr-review.py', 'finish', self.pull['key'], 'merged']), \
+                patch.object(review, 'run', return_value=json.dumps(actual)):
+            review.main()
+        self.assertEqual(self.record()['status'], 'merged')
+
+    def test_late_merge_result_requires_prior_receipt_and_confirmed_reviewed_head(self):
+        self.tick()
+        for received, merged, head, error in ((False, True, HEAD, ValueError),
+                                              (True, False, HEAD, RuntimeError),
+                                              (True, True, 'c' * 40, RuntimeError)):
+            state = review.load(self.root / 'state.json')
+            record = state['reviews'][self.pull['key']]
+            record['status'] = 'closed'
+            if received:
+                record['receivedAt'] = 1001
+            review.save(self.root / 'state.json', state)
+            actual = {'merged': merged, 'head': {'sha': head}}
+            with patch.object(review, 'ROOT', self.root), \
+                    patch.object(review.sys, 'argv', ['pr-review.py', 'finish', self.pull['key'], 'merged']), \
+                    patch.object(review, 'run', return_value=json.dumps(actual)):
+                with self.assertRaises(error):
+                    review.main()
+            self.assertEqual(self.record()['status'], 'closed')
 
     def test_invalid_github_identity_cannot_enter_a_prompt_or_command(self):
         for values in ({'number': '1; exit'}, {'number': True}, {'number': 0},
