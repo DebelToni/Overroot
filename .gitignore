@@ -12,3 +12,4 @@ apps/*/dist/
 .DS_Store
 *.log
 *.tsbuildinfo
+__pycache__/

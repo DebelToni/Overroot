@@ -1,0 +1,11 @@
+[Unit]
+Description=Deliver Overroot PR reviews into the owner Pi session
+After=network-online.target
+
+[Service]
+Type=oneshot
+WorkingDirectory=%h/cron/overroot-pr-review
+Environment=PATH=/home/xaj/.local/bin:/home/xaj/.pi/agent/bin:/usr/local/bin:/usr/bin:/bin
+ExecStart=/home/xaj/.local/bin/uv run --no-project python %h/cron/overroot-pr-review/pr-review.py poll
+TimeoutStartSec=3min
+UMask=0077
