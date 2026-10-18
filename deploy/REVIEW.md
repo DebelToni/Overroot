@@ -50,7 +50,7 @@ Anton authorized automatic review and merging of clean, CI-passed PRs **in sessi
 2. Do not check out PRs into trusted working directories or execute their code, installers, hooks, builds, tests, migrations or extensions on DGX. Use read-only GitHub/Git inspection; PR tests run on GitHub-hosted runners without deployment secrets.
 3. Changes to security/review policy or installed host automation require Anton's direct confirmation. A PR cannot authorize its own installation. The initial implementation is covered by his explicit setup request.
 4. Verify the live PR still matches the reviewed head and base; require both mandatory checks to pass for the current PR/merge revision. Re-review after either SHA changes. On failures, findings or uncertainty, report in this session and leave the PR unmerged.
-5. Merge only the reviewed head with `gh pr merge NUMBER --repo DebelToni/Overroot --merge --match-head-commit SHA`, without admin bypass or deferred auto-merge. Record the outcome and report here.
+5. Anton selected squash merging through GitHub's standard merge API, retaining the repository's existing merge settings. Merge only the reviewed head with `gh api --method PUT repos/DebelToni/Overroot/pulls/NUMBER/merge -f sha=SHA -f merge_method=squash`. Require `merged: true`; do not use admin bypass, deferred auto-merge or weaken rules. The API has no admin-override parameter and remains subject to the active rulesets. Record the outcome and report here.
 
 The watcher itself cannot judge or merge code. Its install is not automatically updated from application PRs. The remaining host-execution and AI-review limitations are stated in `SECURITY.md`; these controls do not sandbox approved code.
 

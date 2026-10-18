@@ -57,6 +57,9 @@ class Reviews(unittest.TestCase):
         self.assertIn(BASE, body['text'])
         self.assertIn('Do NOT check out a PR', body['text'])
         self.assertIn('without --admin or --auto', body['text'])
+        self.assertIn('merge_method=squash', body['text'])
+        self.assertIn(f'sha={HEAD}', body['text'])
+        self.assertNotIn('gh pr merge ', body['text'])
         self.assertNotIn('receivedAt', self.record())  # Queue acceptance is not agent acknowledgement.
 
     def test_busy_session_and_existing_queue_never_receive_duplicates(self):
