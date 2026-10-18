@@ -56,7 +56,7 @@ A failed build or backup leaves the running release untouched. A failed restart 
 | `data/overroot.sqlite3` | Accounts, documents, revisions and collaboration state |
 | `data/compile-cache/` | PDFs, logs and SyncTeX artifacts |
 | `data/jobs/` | Transient, compiler-readable staging inside the private data directory |
-| `releases/<sha>/`, `current` | Built releases and the active symlink |
+| `releases/<sha>-*/`, `current` | Built releases and the active symlink |
 | `deploy-repo.git/` | Independent deployment Git storage |
 | `deployed.json` | Last successful SHA and deployment timestamp |
 | `backups/` | Three rotating verified online snapshots |
