@@ -93,6 +93,21 @@ describe('editable manuscript backed by modular Yjs files', () => {
     expect(editor.view.state.selection.main.head).toBe(editor.view.state.doc.toString().indexOf('Body text') + 4);
   });
 
+  it('does not skip into another file when an agent replaced the latest human edit', async () => {
+    const { editor, main, body, notice } = setup();
+    editor.view.dispatch({ changes: { from: editor.view.state.doc.toString().indexOf('After'), insert: 'Earlier ' } });
+    editor.view.dispatch({ changes: { from: editor.view.state.doc.toString().indexOf('Body text'), insert: 'Human ' } });
+    body.transact(() => {
+      body.getText('content').delete(0, body.getText('content').length);
+      body.getText('content').insert(0, 'Agent replacement');
+    }, Symbol('remote'));
+    await Promise.resolve();
+    editor.undo();
+    expect(main.getText('content').toString()).toContain('Earlier After');
+    expect(body.getText('content').toString()).toBe('Agent replacement');
+    expect(notice()).toContain('replaced by a newer change');
+  });
+
   it('preserves CRLF bytes and source offsets when editing after a Windows newline', async () => {
     const { editor, body, main } = setup();
     body.transact(() => {
@@ -104,5 +119,21 @@ describe('editable manuscript backed by modular Yjs files', () => {
     editor.view.dispatch({ changes: { from, to: from + 6, insert: 'Changed' } });
     expect(body.getText('content').toString()).toBe('First\r\nChanged\r\n');
     expect(main.getText('content').toString()).toBe('Before\n\\input{body}\nAfter');
+  });
+
+  it('keeps global undo order when a later edit in the same file was overwritten', async () => {
+    const { editor, main, body } = setup();
+    editor.view.dispatch({ changes: { from: editor.view.state.doc.toString().indexOf('Body text'), insert: 'First ' } });
+    editor.view.dispatch({ changes: { from: editor.view.state.doc.toString().indexOf('After'), insert: 'Middle ' } });
+    editor.view.dispatch({ changes: { from: editor.view.state.doc.toString().indexOf('Body text'), insert: 'Last ' } });
+    body.transact(() => body.getText('content').delete('First '.length, 'Last '.length), Symbol('remote'));
+    await Promise.resolve();
+    editor.undo();
+    expect(body.getText('content').toString()).toBe('First Body text');
+    expect(main.getText('content').toString()).toContain('Middle After');
+    editor.undo();
+    expect(main.getText('content').toString()).not.toContain('Middle ');
+    editor.undo();
+    expect(body.getText('content').toString()).toBe('Body text');
   });
 });

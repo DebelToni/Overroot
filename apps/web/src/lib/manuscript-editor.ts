@@ -149,11 +149,26 @@ export class ManuscriptEditor {
   undo(): boolean { return this.moveHistory(this.undoFiles, this.redoFiles, false); }
   redo(): boolean { return this.moveHistory(this.redoFiles, this.undoFiles, true); }
   private moveHistory(from: string[], to: string[], redo: boolean) {
-    while (from.length) {
+    if (from.length) {
       const id = from.pop()!;
       if (!this.canEdit(id)) { from.push(id); return true; }
       const manager = this.managers.get(id)!;
-      if (redo ? manager.redo() : manager.undo()) { to.push(id); this.refresh(); return true; }
+      // Yjs skips overwritten entries internally. Limit it to this one global
+      // history entry so it cannot consume an older edit past another file.
+      const stack = redo ? manager.redoStack : manager.undoStack;
+      const item = stack.pop();
+      let applied = false;
+      if (item) {
+        if (redo) manager.redoStack = [item];
+        else manager.undoStack = [item];
+        try { applied = (redo ? manager.redo() : manager.undo()) !== null; }
+        finally {
+          if (redo) manager.redoStack = stack;
+          else manager.undoStack = stack;
+        }
+      }
+      if (applied) { to.push(id); this.refresh(); return true; }
+      this.onNotice('That edit was replaced by a newer change. No other file was changed.', this.projection.warnings);
     }
     return true;
   }

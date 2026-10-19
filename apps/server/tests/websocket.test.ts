@@ -16,6 +16,48 @@ const MESSAGE_FLUSH_REQUEST = 2;
 const MESSAGE_FLUSH_ACK = 3;
 
  describe('collaboration WebSocket', () => {
+  it('preserves human undo after an agent REST update to the same module', async () => {
+    const dir = await mkdtemp(join(tmpdir(), 'overroot-rest-undo-'));
+    const { app, context } = await buildApp({ databasePath: join(dir, 'state.sqlite3'), logger: false });
+    let client: YClient | undefined;
+    let undo: Y.UndoManager | undefined;
+    try {
+      await context.auth.createUser('writer', 'writer-password-123', true);
+      const login = await app.inject({ method: 'POST', url: '/api/v1/auth/login', payload: { username: 'writer', password: 'writer-password-123' } });
+      const headers = { authorization: `Bearer ${login.json().token}` };
+      const created = await app.inject({ method: 'POST', url: '/api/v1/projects', headers, payload: { name: 'REST undo', template: 'article' } });
+      const hash = created.json().project.hash as string;
+      const files = await app.inject({ method: 'GET', url: `/api/v1/projects/${hash}/files`, headers });
+      const main = files.json().files.find((file: any) => file.path === 'main.tex');
+      await app.listen({ host: '127.0.0.1', port: 0 });
+      const port = (app.server.address() as AddressInfo).port;
+      const ticketResponse = await app.inject({ method: 'POST', url: '/api/v1/ws-ticket', headers, payload: { projectHash: hash, channel: 'file', fileId: main.id } });
+      const ticket = ticketResponse.json();
+      client = new YClient(`ws://127.0.0.1:${port}${ticket.path}?ticket=${encodeURIComponent(ticket.ticket)}`);
+      await client.synced;
+      undo = new Y.UndoManager(client.text);
+      client.text.insert(client.text.length, '\n% human edit\n');
+      await client.flush();
+      const current = await app.inject({ method: 'GET', url: `/api/v1/projects/${hash}/files/${main.id}`, headers });
+      const credential = await app.inject({ method: 'POST', url: `/api/v1/projects/${hash}/agents`, headers, payload: { name: 'Undo agent' } });
+      const saved = await app.inject({ method: 'PUT', url: `/api/v1/projects/${hash}/files/${main.id}`, headers: { authorization: `Bearer ${credential.json().access.password}`, 'if-match': current.json().file.revision }, payload: { content: `${current.json().file.content}\n% agent edit\n` } });
+      expect(saved.statusCode).toBe(200);
+      await waitUntil(() => client!.text.toString().includes('% agent edit'));
+      expect(undo.undo()).not.toBeNull();
+      await client.flush();
+      const undone = await app.inject({ method: 'GET', url: `/api/v1/projects/${hash}/files/${main.id}`, headers });
+      expect(undone.json().file.content).not.toContain('% human edit');
+      expect(undone.json().file.content).toContain('% agent edit');
+      undo.redo();
+      expect(client.text.toString()).toContain('% human edit');
+      expect(client.text.toString()).toContain('% agent edit');
+    } finally {
+      undo?.destroy(); client?.close();
+      await app.close();
+      await rm(dir, { recursive: true, force: true });
+    }
+  });
+
   it('orders edits, flush acknowledgement, agent replacement, and compilation', async () => {
     const dir = await mkdtemp(join(tmpdir(), 'overroot-websocket-'));
     config.fakeCompiler = true;

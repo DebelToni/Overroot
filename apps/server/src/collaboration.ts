@@ -4,6 +4,7 @@ import * as awarenessProtocol from 'y-protocols/awareness';
 import * as syncProtocol from 'y-protocols/sync';
 import * as decoding from 'lib0/decoding';
 import * as encoding from 'lib0/encoding';
+import { simpleDiffString } from 'lib0/diff';
 import type { ProjectStore } from './project-store.js';
 import { fileRevision, revisionHash } from './security.js';
 import type { ActorIdentity, FileRecord } from './types.js';
@@ -135,9 +136,12 @@ export class CollaborationManager {
     // Preserve a pending collaborator revision before attributing the replacement to another actor.
     await this.flush(active);
     active.lastActor = actor;
+    // Keep unchanged prefix/suffix character identities alive so a REST save
+    // does not invalidate a connected human's undo history and cursor anchors.
+    const change = simpleDiffString(active.text.toString(), content);
     active.doc.transact(() => {
-      active.text.delete(0, active.text.length);
-      active.text.insert(0, content);
+      active.text.delete(change.index, change.remove);
+      active.text.insert(change.index, change.insert);
     }, { overroot: true, actor });
     const saved = await this.flush(active, true);
     if (active.clients.size === 0) this.scheduleEviction(active);
