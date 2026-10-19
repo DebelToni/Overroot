@@ -9,6 +9,11 @@ import { HttpError } from './errors.js';
 import type { ProjectStore } from './project-store.js';
 import type { ActorIdentity, ProjectRecord } from './types.js';
 
+interface CompileSource {
+  path: string;
+  content: Buffer;
+}
+
 export interface CompileJob {
   id: string;
   project_id: string;
@@ -60,13 +65,17 @@ export class Compiler {
   async request(project: ProjectRecord, actor: ActorIdentity): Promise<CompileJob> {
     if (this.closing) throw new HttpError(503, 'The compiler is shutting down', 'compiler_unavailable');
     await this.collaboration.flushProject(project.id);
+    project = { ...project };
     const entry = this.store.getFile(project.id, project.entry_file);
     if (!entry || entry.kind !== 'text') throw new HttpError(400, 'The project entry file does not exist', 'entry_file_missing');
     const sourceHash = this.store.sourceHash(project.id, [
       project.entry_file,
       config.fakeCompiler ? 'fake-compiler-v1' : config.dockerImage,
-      'tectonic-v2:untrusted:synctex'
+      'tectonic-v3:untrusted:synctex:snapshot'
     ]);
+    // Hash and copy in the same synchronous turn, before cache I/O or queue waits.
+    // Later edits, renames and deletions must not change this job's inputs.
+    const sources = this.store.listFiles(project.id).map(file => ({ path: file.path, content: Buffer.from(file.content) }));
     const inFlight = this.db.get<CompileJob>(
       `SELECT * FROM compile_jobs
        WHERE project_id = ? AND source_hash = ? AND status IN ('queued', 'compiling')
@@ -102,7 +111,7 @@ export class Compiler {
       throw error;
     }
     this.events.emit(project.id, { type: 'compile.queued', job: publicCompileJob(job) });
-    this.queue = this.queue.then(() => this.run(job, project)).catch((error) => {
+    this.queue = this.queue.then(() => this.run(job, project, sources)).catch((error) => {
       console.error('[compile queue]', error);
     });
     return job;
@@ -200,7 +209,7 @@ export class Compiler {
     return job;
   }
 
-  private async run(job: CompileJob, project: ProjectRecord): Promise<void> {
+  private async run(job: CompileJob, project: ProjectRecord, sources: CompileSource[]): Promise<void> {
     const startedAt = new Date().toISOString();
     this.db.run("UPDATE compile_jobs SET status = 'compiling', started_at = ? WHERE id = ?", startedAt, job.id);
     this.events.emit(project.id, { type: 'compile.started', job: { ...publicCompileJob(job), status: 'compiling', startedAt } });
@@ -209,7 +218,7 @@ export class Compiler {
     const outputDir = join(workDir, '.overroot-output');
     try {
       await mkdir(outputDir, { recursive: true });
-      for (const file of this.store.listFiles(project.id)) {
+      for (const file of sources) {
         const destination = join(workDir, file.path);
         if (!isChildPath(workDir, destination)) throw new Error('Unsafe project path');
         let directory = workDir;
