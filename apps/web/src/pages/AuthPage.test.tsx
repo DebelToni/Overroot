@@ -24,6 +24,43 @@ beforeEach(() => {
 afterEach(cleanup);
 
 describe('authentication progress', () => {
+  it('ignores a late sign-in result after switching to registration', async () => {
+    const pending = deferred<{ token: string; user: { username: string } }>();
+    harness.api.login.mockReturnValueOnce(pending.promise);
+    render(<MemoryRouter initialEntries={['/login']}><Routes><Route path="/login" element={<AuthPage mode="login"/>}/><Route path="/register" element={<AuthPage mode="register"/>}/><Route path="/" element={<div>Project dashboard</div>}/></Routes></MemoryRouter>);
+    fireEvent.change(screen.getByLabelText('Username'), { target: { value: 'writer' } });
+    fireEvent.change(screen.getByLabelText('Password'), { target: { value: 'test-password' } });
+    fireEvent.submit(screen.getByLabelText('Password').closest('form')!);
+    fireEvent.click(screen.getByRole('link', { name: 'Create an account' }));
+    expect(screen.getByRole('button', { name: 'Join Overroot' })).toBeEnabled();
+    await act(async () => { pending.resolve({ token: 'stale-token', user: { username: 'writer' } }); });
+    expect(harness.setSession).not.toHaveBeenCalled();
+    expect(screen.getByRole('heading', { name: 'Create an account' })).toBeInTheDocument();
+    expect(screen.queryByText('Project dashboard')).not.toBeInTheDocument();
+  });
+
+  it('keeps current registration progress when the previous sign-in fails late', async () => {
+    const login = deferred<{ token: string; user: { username: string } }>();
+    const register = deferred<{ token: string; user: { username: string } }>();
+    harness.api.login.mockReturnValueOnce(login.promise);
+    harness.api.register.mockReturnValueOnce(register.promise);
+    render(<MemoryRouter initialEntries={['/login']}><Routes><Route path="/login" element={<AuthPage mode="login"/>}/><Route path="/register" element={<AuthPage mode="register"/>}/><Route path="/" element={<div>Project dashboard</div>}/></Routes></MemoryRouter>);
+    fireEvent.change(screen.getByLabelText('Username'), { target: { value: 'writer' } });
+    fireEvent.change(screen.getByLabelText('Password'), { target: { value: 'test-password' } });
+    fireEvent.submit(screen.getByLabelText('Password').closest('form')!);
+    fireEvent.click(screen.getByRole('link', { name: 'Create an account' }));
+    fireEvent.change(screen.getByLabelText('Invitation'), { target: { value: 'invitation' } });
+    fireEvent.submit(screen.getByLabelText('Password').closest('form')!);
+    await act(async () => { login.reject(new Error('Old login rejected')); });
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Creating account…' })).toBeDisabled();
+    expect(screen.getByRole('status')).toHaveTextContent('Creating account…');
+    const session = { token: 'current-token', user: { username: 'writer' } };
+    await act(async () => { register.resolve(session); });
+    expect(harness.setSession).toHaveBeenCalledExactlyOnceWith(session.token, session.user);
+    expect(screen.getByText('Project dashboard')).toBeInTheDocument();
+  });
+
   it.each(['login', 'register'] as const)('keeps %s progress tied to the request and recovers after failure', async (mode) => {
     const pending = deferred<{ token: string; user: { username: string } }>();
     harness.api[mode].mockReturnValue(pending.promise);
