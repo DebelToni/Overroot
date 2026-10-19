@@ -74,17 +74,18 @@ export function WorkspacePage() {
     activityTimer.current = window.setTimeout(() => setActivity(null), 4500);
   }, []);
 
-  const loadFiles = useCallback(async (preferredId?: string) => {
+  const loadFiles = useCallback(async (preferred?: { id: string; navigationId: number }) => {
     const response = await api.listFiles(hash);
     setFiles(response.files);
-    const currentId = preferredId ?? selected?.id;
+    if (preferred && preferred.navigationId !== navigationRequest.current) return;
+    const currentId = preferred?.id ?? selected?.id;
     let next = response.files.find((file) => file.id === currentId);
     if (!next && project) next = response.files.find((file) => file.path === project.entryFile);
     next ??= response.files[0];
     if (next && next.id !== selected?.id) {
       const requestId = ++selectionRequest.current;
       const full = await api.getFile(hash, next.id);
-      if (requestId === selectionRequest.current) setSelected(full.file);
+      if (requestId === selectionRequest.current && (!preferred || preferred.navigationId === navigationRequest.current)) setSelected(full.file);
     } else if (next) {
       setSelected((current) => current?.id === next!.id ? { ...current, ...next } : current);
     } else setSelected(null);
@@ -221,18 +222,28 @@ export function WorkspacePage() {
   }
 
   async function createFile(path: string) {
+    const requestId = ++navigationRequest.current;
     const response = await api.createFile(hash, { path, content: '' });
-    await loadFiles(response.file.id);
+    await loadFiles({ id: response.file.id, navigationId: requestId });
+  }
+
+  async function renameFile(path: string) {
+    const id = fileActions!.id;
+    const requestId = ++navigationRequest.current;
+    await api.renameFile(hash, id, path);
+    await loadFiles({ id, navigationId: requestId });
+    setProject((await api.getProject(hash)).project);
   }
 
   async function uploadFiles(list: FileList) {
+    const requestId = ++navigationRequest.current;
     setError(null);
     for (const source of Array.from(list)) {
       try {
         const text = isTextUpload(source) ? await source.text() : undefined;
         const base64 = text == null ? toBase64(await source.arrayBuffer()) : undefined;
         const response = await api.createFile(hash, { path: source.name, ...(text != null ? { content: text } : { contentBase64: base64 }), mimeType: source.type || undefined });
-        await loadFiles(response.file.id);
+        await loadFiles({ id: response.file.id, navigationId: requestId });
       } catch (reason) { setError(`${source.name}: ${reason instanceof Error ? reason.message : 'upload failed'}`); break; }
     }
   }
@@ -347,7 +358,7 @@ export function WorkspacePage() {
     <InlineError message={error}/>
 
     <NewFileDialog open={newFileOpen} onClose={() => setNewFileOpen(false)} onCreate={createFile}/>
-    <FileActionsDialog open={Boolean(fileActions)} file={fileActions} entryFile={project.entryFile} canSetEntry={project.canManage} onClose={() => setFileActions(null)} onRename={async (path) => { const response = await api.renameFile(hash, fileActions!.id, path); if (selected?.id === fileActions!.id) setSelected({ ...selected, ...response.file }); await loadFiles(fileActions!.id); setProject((await api.getProject(hash)).project); }} onDelete={async () => { const id = fileActions!.id; await api.deleteFile(hash, id); if (selected?.id === id) setSelected(null); await loadFiles(); }} onSetEntry={async () => { const response = await api.updateProject(hash, { entryFile: fileActions!.path }); setProject(response.project); }}/>
+    <FileActionsDialog open={Boolean(fileActions)} file={fileActions} entryFile={project.entryFile} canSetEntry={project.canManage} onClose={() => setFileActions(null)} onRename={renameFile} onDelete={async () => { const id = fileActions!.id; await api.deleteFile(hash, id); if (selected?.id === id) setSelected(null); await loadFiles(); }} onSetEntry={async () => { const response = await api.updateProject(hash, { entryFile: fileActions!.path }); setProject(response.project); }}/>
     <ShareDialog open={shareOpen} onClose={() => setShareOpen(false)} api={api} project={project}/>
     {project.canManage && <AgentDialog open={agentOpen} onClose={() => setAgentOpen(false)} api={api} project={project}/>} 
     {project.canManage && <ProjectSettingsDialog open={settingsOpen} onClose={() => setSettingsOpen(false)} api={api} project={project} files={files} onChanged={setProject} onDeleted={() => navigate('/')}/>} 
