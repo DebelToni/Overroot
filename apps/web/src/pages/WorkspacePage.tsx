@@ -65,6 +65,7 @@ export function WorkspacePage() {
   const activityTimer = useRef<number | null>(null);
   const pdfRequest = useRef(0);
   const selectionRequest = useRef(0);
+  const navigationRequest = useRef(0);
   const editorFlush = useRef<(() => Promise<void>) | null>(null);
 
   const flashActivity = useCallback((text: string) => {
@@ -187,29 +188,30 @@ export function WorkspacePage() {
 
   async function selectFile(file: ProjectFile) {
     setError(null);
-    const requestId = ++selectionRequest.current;
+    const requestId = ++navigationRequest.current;
     try {
       await editorFlush.current?.();
-      if (requestId !== selectionRequest.current) return;
+      if (requestId !== navigationRequest.current) return;
       const response = await api.getFile(hash, file.id);
-      if (requestId === selectionRequest.current) {
+      if (requestId === navigationRequest.current) {
+        ++selectionRequest.current;
         setSelected(response.file);
         setEditorMode('files');
         setMobilePane('editor');
       }
     } catch (reason) {
-      if (requestId === selectionRequest.current) setError(reason instanceof Error ? reason.message : 'Could not open file');
+      if (requestId === navigationRequest.current) setError(reason instanceof Error ? reason.message : 'Could not open file');
     }
   }
 
   async function switchEditorMode(mode: 'manuscript' | 'files') {
-    const requestId = ++selectionRequest.current;
+    const requestId = ++navigationRequest.current;
     if (mode === editorMode) return;
     try {
       await editorFlush.current?.();
-      if (requestId === selectionRequest.current) setEditorMode(mode);
+      if (requestId === navigationRequest.current) setEditorMode(mode);
     } catch {
-      if (requestId === selectionRequest.current) setError('Wait for the editor to synchronize before switching views. Your edits are still in the current view.');
+      if (requestId === navigationRequest.current) setError('Wait for the editor to synchronize before switching views. Your edits are still in the current view.');
     }
   }
 

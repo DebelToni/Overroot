@@ -6,11 +6,12 @@ import { WorkspacePage } from './WorkspacePage';
 const harness = vi.hoisted(() => ({
   api: { getProject: vi.fn(), listFiles: vi.fn(), latestCompile: vi.fn(), getFile: vi.fn() },
   flush: vi.fn(async () => {}),
-  user: { id: 'writer', username: 'writer', displayName: 'Writer', isAdmin: false, createdAt: '' }
+  user: { id: 'writer', username: 'writer', displayName: 'Writer', isAdmin: false, createdAt: '' },
+  onEvent: null as ((event: { type: string; fileId: string }) => void) | null
 }));
 vi.mock('../lib/session', () => ({ useSession: () => ({ api: harness.api, user: harness.user, clearSession: vi.fn() }) }));
 vi.mock('../hooks/useTheme', () => ({ useTheme: () => ({ preference: 'light', resolved: 'light', setPreference: vi.fn() }) }));
-vi.mock('../hooks/useProjectEvents', () => ({ useProjectEvents: () => {} }));
+vi.mock('../hooks/useProjectEvents', () => ({ useProjectEvents: (_api: unknown, _hash: string, handler: typeof harness.onEvent) => { harness.onEvent = handler; } }));
 vi.mock('../components/PdfViewer', () => ({ PdfViewer: () => <div>PDF test preview</div> }));
 vi.mock('../components/WorkspaceDialogs', () => ({ AgentDialog: () => null, CompileLogDrawer: () => null, FileActionsDialog: () => null, HistoryDrawer: () => null, NewFileDialog: () => null, ProjectSettingsDialog: () => null, ShareDialog: () => null }));
 vi.mock('../components/ManuscriptPane', async () => {
@@ -22,9 +23,9 @@ vi.mock('../components/ManuscriptPane', async () => {
 });
 vi.mock('../components/EditorPane', async () => {
   const { useEffect } = await import('react');
-  return { EditorPane: function Pane({ onFlushReady }: { onFlushReady: (flush: (() => Promise<void>) | null) => void }) {
+  return { EditorPane: function Pane({ onFlushReady, file }: { onFlushReady: (flush: (() => Promise<void>) | null) => void; file: { content?: string } | null }) {
     useEffect(() => { onFlushReady(() => harness.flush()); return () => onFlushReady(null); }, [onFlushReady]);
-    return <div>File test editor</div>;
+    return <div>File test editor<span>{file?.content}</span></div>;
   } };
 });
 
@@ -51,6 +52,36 @@ async function openWorkspace() {
 }
 
 describe('source-view navigation races', () => {
+  it.each(['file.changed', 'agent.changed'])('preserves a read-only %s refresh when the already-selected Files button is clicked', async (type) => {
+    harness.api.getProject.mockResolvedValue({ project: { hash: 'project', name: 'Paper', entryFile: 'main.tex', role: 'viewer', canWrite: false, canManage: false, memberCount: 1 } });
+    await openWorkspace();
+    fireEvent.click(screen.getByRole('button', { name: 'Files' }));
+    await screen.findByText('File test editor');
+    const pending = deferred<{ file: typeof main }>();
+    harness.api.getFile.mockReturnValueOnce(pending.promise);
+    act(() => { harness.onEvent!({ type, fileId: main.id }); });
+    expect(harness.api.getFile).toHaveBeenLastCalledWith('project', 'main');
+    fireEvent.click(screen.getByRole('button', { name: 'Files' }));
+    await act(async () => { pending.resolve({ file: { ...main, content: 'Updated collaborator text' } }); });
+    expect(screen.getByText('Updated collaborator text')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Files' })).toHaveAttribute('aria-pressed', 'true');
+  });
+
+  it('does not cancel a pending file selection when the current read-only file refreshes', async () => {
+    harness.api.getProject.mockResolvedValue({ project: { hash: 'project', name: 'Paper', entryFile: 'main.tex', role: 'viewer', canWrite: false, canManage: false, memberCount: 1 } });
+    await openWorkspace();
+    fireEvent.click(screen.getByRole('button', { name: 'Files' }));
+    await screen.findByText('File test editor');
+    const pending = deferred<{ file: typeof result }>();
+    harness.api.getFile.mockImplementation((_hash: string, id: string) => id === 'result' ? pending.promise : Promise.resolve({ file: { ...main, content: 'Current main refreshed' } }));
+    fireEvent.click(screen.getByRole('button', { name: 'result.tex' }));
+    await waitFor(() => expect(harness.api.getFile).toHaveBeenLastCalledWith('project', 'result'));
+    act(() => { harness.onEvent!({ type: 'file.changed', fileId: main.id }); });
+    await screen.findByText('Current main refreshed');
+    await act(async () => { pending.resolve({ file: result }); });
+    expect(screen.getByText('Result')).toBeInTheDocument();
+  });
+
   it('still opens a selected file when no newer choice supersedes it', async () => {
     await openWorkspace();
     fireEvent.click(screen.getByRole('button', { name: 'result.tex' }));
