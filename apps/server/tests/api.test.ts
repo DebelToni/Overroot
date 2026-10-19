@@ -212,6 +212,9 @@ describe('Overroot API', () => {
   it('compiles, caches, and serves authenticated PDFs', async () => {
     const { app, adminToken, context } = harness!;
     const project = await createProject(app, adminToken);
+    const latestUrl = `/api/v1/projects/${project.hash}/compile/latest`;
+    const empty = await app.inject({ method: 'GET', url: latestUrl, headers: bearer(adminToken) });
+    expect(empty.json()).toEqual({ job: null, lastSuccessfulJob: null });
     const first = await app.inject({
       method: 'POST',
       url: `/api/v1/projects/${project.hash}/compile`,
@@ -227,6 +230,15 @@ describe('Overroot API', () => {
       await new Promise((resolve) => setTimeout(resolve, 20));
     }
     expect(job.status).toBe('succeeded');
+
+    expect(context.compiler.artifactPath(job, 'pdf')).toBe(job.pdf_path);
+    for (const path of [
+      join(harness!.dir, 'compile-cache'),
+      join(harness!.dir, 'compile-cache-neighbor', 'outside.pdf'),
+      join(harness!.dir, 'compile-cache', '..', 'outside.pdf')
+    ]) {
+      expect(() => context.compiler.artifactPath({ ...job, pdf_path: path }, 'pdf')).toThrow('Artifact not found');
+    }
 
     const pdf = await app.inject({
       method: 'GET',
@@ -258,6 +270,31 @@ describe('Overroot API', () => {
     });
     expect(cached.statusCode).toBe(200);
     expect(cached.json().job.status).toBe('succeeded');
+    expect(cached.json().job.hasSynctex).toBe(true);
+    const cachedLocation = await app.inject({
+      method: 'GET',
+      url: `/api/v1/projects/${project.hash}/compile/${cached.json().job.id}/synctex?path=main.tex&line=10`,
+      headers: bearer(adminToken)
+    });
+    expect(cachedLocation.statusCode).toBe(200);
+    expect(cachedLocation.json()).toEqual(sourceLocation.json());
+
+    const failedId = '00000000-0000-4000-8000-000000000001';
+    context.db.run(`INSERT INTO compile_jobs
+      (id, project_id, source_hash, status, entry_file, log, error,
+       requested_by_type, requested_by_id, requested_by_name, created_at, finished_at)
+      SELECT ?, project_id, 'failed-revision', 'failed', entry_file, 'Invalid TeX', 'Invalid TeX',
+       requested_by_type, requested_by_id, requested_by_name, ?, ? FROM compile_jobs WHERE id = ?`,
+    failedId, new Date(Date.now() + 1000).toISOString(), new Date().toISOString(), id);
+    const latest = await app.inject({ method: 'GET', url: latestUrl, headers: bearer(adminToken) });
+    expect(latest.json().job).toMatchObject({ id: failedId, status: 'failed', hasPdf: false });
+    expect(latest.json().lastSuccessfulJob).toMatchObject({ id: cached.json().job.id, status: 'succeeded', hasPdf: true, hasSynctex: true });
+    const lastGood = await app.inject({ method: 'GET', url: `/api/v1/projects/${project.hash}/pdf`, headers: bearer(adminToken) });
+    expect(lastGood.statusCode).toBe(200);
+    expect(lastGood.rawPayload).toEqual(pdf.rawPayload);
+    const other = await createProject(app, adminToken, 'Uncompiled project');
+    const isolated = await app.inject({ method: 'GET', url: `/api/v1/projects/${other.hash}/compile/latest`, headers: bearer(adminToken) });
+    expect(isolated.json()).toEqual({ job: null, lastSuccessfulJob: null });
   });
 });
 

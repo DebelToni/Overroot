@@ -200,7 +200,7 @@ export class ApiClient {
   }
 
   latestCompile(hash: string) {
-    return this.request<{ job: CompileJob | null }>(`/api/v1/projects/${encodeURIComponent(hash)}/compile/latest`);
+    return this.request<{ job: CompileJob | null; lastSuccessfulJob?: CompileJob | null }>(`/api/v1/projects/${encodeURIComponent(hash)}/compile/latest`);
   }
 
   compilePdf(hash: string, jobId: string) {
