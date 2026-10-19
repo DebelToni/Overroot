@@ -120,4 +120,20 @@ describe('editable manuscript backed by modular Yjs files', () => {
     expect(body.getText('content').toString()).toBe('First\r\nChanged\r\n');
     expect(main.getText('content').toString()).toBe('Before\n\\input{body}\nAfter');
   });
+
+  it('keeps global undo order when a later edit in the same file was overwritten', async () => {
+    const { editor, main, body } = setup();
+    editor.view.dispatch({ changes: { from: editor.view.state.doc.toString().indexOf('Body text'), insert: 'First ' } });
+    editor.view.dispatch({ changes: { from: editor.view.state.doc.toString().indexOf('After'), insert: 'Middle ' } });
+    editor.view.dispatch({ changes: { from: editor.view.state.doc.toString().indexOf('Body text'), insert: 'Last ' } });
+    body.transact(() => body.getText('content').delete('First '.length, 'Last '.length), Symbol('remote'));
+    await Promise.resolve();
+    editor.undo();
+    expect(body.getText('content').toString()).toBe('First Body text');
+    expect(main.getText('content').toString()).toContain('Middle After');
+    editor.undo();
+    expect(main.getText('content').toString()).not.toContain('Middle ');
+    editor.undo();
+    expect(body.getText('content').toString()).toBe('Body text');
+  });
 });
