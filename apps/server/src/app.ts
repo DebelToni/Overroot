@@ -118,10 +118,15 @@ export async function buildApp(options: BuildAppOptions = {}) {
     return reply.send({ name: 'Overroot', api: '/api/v1/openapi.json' });
   });
 
+  // Upgraded sockets keep HTTP server.close() pending. Close them before that
+  // drain starts, so the final compiler/collaboration/database hooks can run.
+  app.addHook('preClose', async () => {
+    await gateway.close();
+  });
+
   app.addHook('onClose', async () => {
     await compiler.close();
     await collaboration.close();
-    await gateway.close();
     db.checkpoint();
     db.close();
   });
