@@ -37,6 +37,8 @@ export const config = {
   publicUrl: (process.env.OVERROOT_PUBLIC_URL ?? 'https://overroot.toni.foo').replace(/\/+$/, ''),
   sessionDays: integer('OVERROOT_SESSION_DAYS', 30),
   compileTimeoutSeconds: integer('OVERROOT_COMPILE_TIMEOUT_SECONDS', 45),
+  compileMaxJobs: integer('OVERROOT_COMPILE_MAX_JOBS', 8),
+  compileMaxSnapshotBytes: integer('OVERROOT_COMPILE_MAX_SNAPSHOT_BYTES', 128 * 1024 * 1024),
   dockerImage: process.env.OVERROOT_DOCKER_IMAGE ?? 'overroot-tectonic:0.16.9',
   dockerContainer: process.env.OVERROOT_DOCKER_CONTAINER ?? 'overroot-tectonic-worker',
   fakeCompiler: bool('OVERROOT_FAKE_COMPILER', false),
