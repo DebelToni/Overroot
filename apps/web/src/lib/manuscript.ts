@@ -66,9 +66,14 @@ export function buildManuscript(entry: string, sources: ManuscriptSource[]): Man
 }
 
 function normalizeInput(path: string): string {
+  // Out-of-project paths must stay unresolved, never alias a project module.
+  if (path.startsWith('/') || /^[A-Za-z]:/.test(path)) return path;
   const parts: string[] = [];
   for (const part of path.split('/')) {
-    if (part === '..') parts.pop();
+    if (part === '..') {
+      if (parts.length === 0) return path;
+      parts.pop();
+    }
     else if (part !== '.' && part) parts.push(part);
   }
   return parts.join('/');
