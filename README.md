@@ -141,6 +141,10 @@ The first real compile builds `overroot-tectonic:0.16.9` if necessary and starts
 
 The cache key includes the entry file, compiler context, flags, paths, and every source revision. An identical project state reuses its existing PDF immediately.
 
+Uncached jobs prepare shared source folders once and write up to eight files at a time. All active writes finish before failure cleanup; explicit staging permissions remain in place for the isolated compiler. PDF validation reads only its five-byte signature instead of loading the entire output again.
+
+To benchmark source preparation separately from TeX execution, run `node scripts/benchmark-compile-staging.mjs` with Node 24 or newer. An optional directory argument places temporary fixtures on a chosen disk. It compares the previous serial staging loop with the current implementation, alternates execution order, and reports eight samples after warmup for 1, 100, and 500 nested files. These timings measure filesystem staging only, not total compilation time.
+
 Compile admission is bounded across all projects: at most eight admitted jobs (including the running job and cache lookups) and 128 MiB of retained source/asset snapshot bytes. Limits are checked from file metadata before reading source blobs; identical pending requests share one admission. A full queue returns HTTP 429 (`compile_queue_full`); a project exceeding the byte limit returns HTTP 413 (`compile_snapshot_too_large`). Reservations and source buffers are released after completion, failure, or an early return. Administrators can change the positive integer limits with `OVERROOT_COMPILE_MAX_JOBS` and `OVERROOT_COMPILE_MAX_SNAPSHOT_BYTES`; the byte limit bounds retained snapshot contents, not the entire Node process heap or temporary database reads.
 
 ## Data and backups

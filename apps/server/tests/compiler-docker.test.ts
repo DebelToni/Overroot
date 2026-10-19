@@ -15,9 +15,15 @@ it.skipIf(process.env.OVERROOT_TEST_DOCKER !== '1')('compiles a nested private s
   const { app, context } = await buildApp({ databasePath: join(dir, 'test.sqlite3'), logger: false });
   try {
     const user = await context.auth.createUser('compiler-test', 'compiler-test-password', true);
+    const modules = Array.from({ length: 20 }, (_, i) => ({
+      path: `sections/deep/chapter-${i % 4}/part-${i}.tex`,
+      content: Buffer.from(`Module ${i} is readable by the isolated compiler.\n\n`)
+    }));
+    const includes = modules.map(file => `\\input{${file.path}}`).join('\n');
     const project = context.projects.createImportedProject(user.id, 'Nested source', [
-      { path: 'main.tex', content: Buffer.from('\\documentclass{article}\n\\begin{document}\\input{sections/deep/body}\\end{document}') },
-      { path: 'sections/deep/body.tex', content: Buffer.from('Overroot compiler permission regression.') }
+      { path: 'main.tex', content: Buffer.from(`\\documentclass{article}\n\\begin{document}\\input{sections/deep/body}\n${includes}\n\\end{document}`) },
+      { path: 'sections/deep/body.tex', content: Buffer.from('Overroot compiler permission regression.') },
+      ...modules
     ]);
     const actor = { type: 'user' as const, id: user.id, name: user.username };
     const body = context.projects.getFile(project.id, 'sections/deep/body.tex')!;

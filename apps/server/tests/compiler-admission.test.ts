@@ -118,7 +118,8 @@ it('coalesces simultaneous and in-flight duplicates and releases cached-hit rese
   expect(h.readSources).toHaveBeenCalledOnce();
   releaseStaging();
   await finished(first.id, h.project.id);
-  expect((await h.request()).status).toBe('succeeded');
+  // The success record can be visible while staging cleanup is still draining.
+  expect((await vi.waitFor(() => h.request())).status).toBe('succeeded');
   h.revision('B');
   const next = await h.request();
   await finished(next.id, h.project.id);
@@ -172,7 +173,7 @@ it('shares the queue limit across projects', async () => {
   expect(h.readSources).toHaveBeenCalledOnce();
   releaseStaging();
   await finished(first.id, h.project.id);
-  const next = await context.compiler.request(other, h.actor);
+  const next = await vi.waitFor(() => context.compiler.request(other, h.actor));
   await finished(next.id, other.id);
 });
 
