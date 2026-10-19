@@ -149,11 +149,12 @@ export class ManuscriptEditor {
   undo(): boolean { return this.moveHistory(this.undoFiles, this.redoFiles, false); }
   redo(): boolean { return this.moveHistory(this.redoFiles, this.undoFiles, true); }
   private moveHistory(from: string[], to: string[], redo: boolean) {
-    while (from.length) {
+    if (from.length) {
       const id = from.pop()!;
       if (!this.canEdit(id)) { from.push(id); return true; }
       const manager = this.managers.get(id)!;
       if (redo ? manager.redo() : manager.undo()) { to.push(id); this.refresh(); return true; }
+      this.onNotice('That edit was replaced by a newer change. No other file was changed.', this.projection.warnings);
     }
     return true;
   }
