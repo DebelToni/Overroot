@@ -1,6 +1,6 @@
 import { randomUUID } from 'node:crypto';
 import { chmod, copyFile, mkdir, readFile, realpath, rename, rm, stat, writeFile } from 'node:fs/promises';
-import { basename, extname, join, relative, resolve } from 'node:path';
+import { basename, extname, isAbsolute, join, relative, resolve, sep } from 'node:path';
 import { spawn } from 'node:child_process';
 import { config, repoRoot } from './config.js';
 import type { CollaborationManager, EventHub } from './collaboration.js';
@@ -141,8 +141,7 @@ export class Compiler {
     const path = type === 'pdf' ? job.pdf_path : job.synctex_path;
     if (!path) throw new HttpError(404, `${type.toUpperCase()} artifact not found`, 'artifact_not_found');
     const resolved = resolve(path);
-    const allowed = `${resolve(this.cacheDir)}/`;
-    if (!resolved.startsWith(allowed)) throw new HttpError(404, 'Artifact not found', 'artifact_not_found');
+    if (!isChildPath(this.cacheDir, resolved)) throw new HttpError(404, 'Artifact not found', 'artifact_not_found');
     return resolved;
   }
 
@@ -209,7 +208,7 @@ export class Compiler {
       await mkdir(outputDir, { recursive: true });
       for (const file of this.store.listFiles(project.id)) {
         const destination = join(workDir, file.path);
-        if (!resolve(destination).startsWith(`${resolve(workDir)}/`)) throw new Error('Unsafe project path');
+        if (!isChildPath(workDir, destination)) throw new Error('Unsafe project path');
         let directory = workDir;
         for (const part of file.path.split('/').slice(0, -1)) {
           directory = join(directory, part);
@@ -379,6 +378,11 @@ export function publicCompileJob(job: CompileJob): Record<string, unknown> {
     hasPdf: Boolean(job.pdf_path),
     hasSynctex: Boolean(job.synctex_path)
   };
+}
+
+function isChildPath(parent: string, child: string): boolean {
+  const path = relative(resolve(parent), resolve(child));
+  return path !== '' && path !== '..' && !path.startsWith(`..${sep}`) && !isAbsolute(path);
 }
 
 function workerMatches(containerJson: string, imageJson: string, jobsDir: string): boolean {

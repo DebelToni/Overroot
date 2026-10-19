@@ -228,6 +228,15 @@ describe('Overroot API', () => {
     }
     expect(job.status).toBe('succeeded');
 
+    expect(context.compiler.artifactPath(job, 'pdf')).toBe(job.pdf_path);
+    for (const path of [
+      join(harness!.dir, 'compile-cache'),
+      join(harness!.dir, 'compile-cache-neighbor', 'outside.pdf'),
+      join(harness!.dir, 'compile-cache', '..', 'outside.pdf')
+    ]) {
+      expect(() => context.compiler.artifactPath({ ...job, pdf_path: path }, 'pdf')).toThrow('Artifact not found');
+    }
+
     const pdf = await app.inject({
       method: 'GET',
       url: `/api/v1/projects/${project.hash}/compile/${id}/pdf`,
