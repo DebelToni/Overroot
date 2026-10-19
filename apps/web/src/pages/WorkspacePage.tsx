@@ -390,7 +390,7 @@ function ProjectWorkspace({ hash }: { hash: string }) {
         {project.canManage && <button className="plain-button workspace-action-text" type="button" aria-label="Agents" title="Agents" onClick={() => setAgentOpen(true)}><Braces size={14}/> Agents</button>}
         {project.canManage && <button className="icon-button" type="button" onClick={() => setSettingsOpen(true)} aria-label="Project settings"><Settings2 size={15}/></button>}
         <ThemeControl value={theme.preference} onChange={theme.setPreference}/>
-        <button className="compile-button" type="button" disabled={!project.canWrite || compiling} onClick={() => void compile()}>{compiling ? <PendingLabel>{compileLabel}</PendingLabel> : <><Play size={14} fill="currentColor"/>Compile</>}</button>
+        <button className="compile-button" type="button" disabled={!project.canWrite || compiling} aria-busy={compiling} aria-label={compiling ? compileLabel : 'Compile'} onClick={() => void compile()}>{compiling ? <PendingLabel>{compileLabel}</PendingLabel> : <><Play size={14} fill="currentColor"/>Compile</>}</button>
         <button className="icon-button desktop-logout" type="button" onClick={() => void logout()} aria-label="Log out"><LogOut size={15}/></button>
         <button className="icon-button mobile-more-button" type="button" onClick={() => setMobileMenuOpen(true)} aria-label="More workspace actions"><MoreHorizontal size={17}/></button>
       </div>

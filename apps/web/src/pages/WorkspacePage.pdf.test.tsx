@@ -121,13 +121,18 @@ it('disables compilation while source synchronization and submission are pending
   const button = screen.getByRole('button', { name: /^Compile$/ });
   fireEvent.click(button);
   expect(button).toBeDisabled();
+  expect(button).toHaveAttribute('aria-label', 'Saving changes…');
+  expect(button).toHaveAttribute('aria-busy', 'true');
   fireEvent.click(button);
   expect(harness.flush).toHaveBeenCalledTimes(1);
   expect(harness.api.compile).not.toHaveBeenCalled();
   await act(async () => { flush.resolve(); });
   expect(button).toBeDisabled();
+  expect(button).toHaveAttribute('aria-label', 'Starting compilation…');
   await act(async () => { response.resolve({ job: successful }); });
   expect(button).toBeEnabled();
+  expect(button).toHaveAttribute('aria-label', 'Compile');
+  expect(button).toHaveAttribute('aria-busy', 'false');
   expect(harness.api.compile).toHaveBeenCalledTimes(1);
 });
 
