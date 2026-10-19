@@ -1,4 +1,4 @@
-import { ArrowRight, FileArchive, LogOut, Plus, Settings2, Upload } from 'lucide-react';
+import { ArrowRight, FileArchive, FileText, LogOut, Plus, Settings2, Upload } from 'lucide-react';
 import { useEffect, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Brand } from '../components/Brand';
@@ -57,14 +57,14 @@ export function DashboardPage() {
       <div className="dashboard-head__actions">
         <ThemeControl value={theme.preference} onChange={theme.setPreference}/>
         {user?.isAdmin && <button className="plain-button admin-invites-button" type="button" onClick={() => setInvitesOpen(true)}><Settings2 size={14}/><span>Invitations</span></button>}
-        <button type="button" className="user-chip" onClick={() => setAccountOpen(true)}><b>{user?.displayName}</b><small>{user?.isAdmin ? 'ADMIN' : 'MEMBER'}</small></button>
+        <button type="button" className="user-chip" onClick={() => setAccountOpen(true)}><b>{user?.displayName}</b><small>{user?.isAdmin ? 'Admin' : 'Member'}</small></button>
         <button className="icon-button" type="button" onClick={() => void logout()} aria-label="Log out" title="Log out"><LogOut size={16}/></button>
       </div>
     </header>
     <div className="accent-line"/>
     <main className="dashboard-main">
       <section className="dashboard-intro">
-        <div><div className="eyebrow">Your workspace</div><h1>Documents, together.</h1><p>Write, compile, and collaborate with people or agents from one quiet workspace.</p></div>
+        <div><div className="eyebrow">Your workspace</div><h1>A place for your next paper.</h1><p>Pick up where you left off, or start something new.</p></div>
         <div className="dashboard-intro__actions">
           <button className="secondary-button" type="button" onClick={() => importInput.current?.click()} disabled={importing}><Upload size={15}/>{importing ? 'Importing…' : 'Import ZIP'}</button>
           <input ref={importInput} hidden type="file" accept=".zip,application/zip" onChange={(event) => { const file = event.target.files?.[0]; if (file) void importZip(file); event.target.value = ''; }}/>
@@ -76,19 +76,19 @@ export function DashboardPage() {
         <header><h2 id="projects-title">Projects</h2><span>{projects.length.toString().padStart(2, '0')}</span></header>
         {loading ? <LoadingBlock label="Loading projects"/> : <div className="project-list">
           {projects.length === 0 && <div className="dashboard-empty"><FileArchive size={28}/><h3>No projects yet.</h3><p>Begin with a clean template or import an existing ZIP archive.</p><button className="plain-button" type="button" onClick={() => setNewOpen(true)}>Create your first project <ArrowRight size={14}/></button></div>}
-          {projects.map((project, index) => <button key={project.hash} type="button" className="project-row" onClick={() => navigate(`/project/${project.hash}`)}>
-            <span className="project-row__number">{String(index + 1).padStart(2, '0')}</span>
+          {projects.map((project) => <button key={project.hash} type="button" className="project-row" onClick={() => navigate(`/project/${project.hash}`)}>
+            <span className="project-row__number" aria-hidden="true"><FileText size={21}/></span>
             <span className="project-row__main"><strong>{project.name}</strong><small>{project.entryFile}</small></span>
-            <span className="project-row__meta"><small>OWNER</small><b>{project.owner}</b></span>
-            <span className="project-row__meta"><small>ACCESS</small><b>{project.role}</b></span>
-            <span className="project-row__meta"><small>UPDATED</small><b>{relativeTime(project.updatedAt)}</b></span>
+            <span className="project-row__meta"><small>Owner</small><b>{project.owner}</b></span>
+            <span className="project-row__meta"><small>Access</small><b className="project-access-tag">{project.role}</b></span>
+            <span className="project-row__meta"><small>Updated</small><b>{relativeTime(project.updatedAt)}</b></span>
             <span className={`compile-chip compile-chip--${project.latestCompileStatus ?? 'none'}`}><i/>{project.latestCompileStatus ?? 'Not compiled'}</span>
             <ArrowRight className="project-row__arrow" size={17}/>
           </button>)}
         </div>}
       </section>
     </main>
-    <footer className="dashboard-footer"><span>OVERROOT · PRIVATE OPEN-SOURCE STUDIO</span><a href="https://github.com/DebelToni/Overroot" target="_blank" rel="noreferrer">Source</a></footer>
+    <footer className="dashboard-footer"><span>Overroot · Private open-source studio</span><a href="https://github.com/DebelToni/Overroot" target="_blank" rel="noreferrer">Source</a></footer>
     <NewProjectDialog open={newOpen} templates={templates} onClose={() => setNewOpen(false)} onCreate={create}/>
     {user?.isAdmin && <InvitesDialog open={invitesOpen} onClose={() => setInvitesOpen(false)} api={api}/>}
     {user && <AccountDialog open={accountOpen} onClose={() => setAccountOpen(false)} api={api} username={user.username}/>} 

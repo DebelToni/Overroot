@@ -1,4 +1,4 @@
-import { ArrowRight, KeyRound } from 'lucide-react';
+import { ArrowRight, FileText, KeyRound, Layers, Users } from 'lucide-react';
 import { useEffect, useState, type FormEvent } from 'react';
 import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import { Brand } from '../components/Brand';
@@ -41,12 +41,12 @@ export function AuthPage({ mode }: { mode: 'login' | 'register' }) {
     <main className="auth-main">
       <section className="auth-story">
         <div className="eyebrow">A small place for serious documents</div>
-        <h1>Write in source.<br/>Think in pages.</h1>
+        <h1>Good ideas deserve<br/>a little space.</h1>
         <p>Private collaborative LaTeX for you, a friend, and the agents you trust.</p>
-        <div className="auth-proof"><span><b>01</b> Live editing</span><span><b>02</b> Fast compile</span><span><b>03</b> Agent REST API</span></div>
+        <div className="auth-proof"><span><FileText size={16} aria-hidden="true"/> Live writing</span><span><Layers size={16} aria-hidden="true"/> Modular sources</span><span><Users size={16} aria-hidden="true"/> Shared workspace</span></div>
       </section>
       <section className="auth-panel" aria-labelledby="auth-title">
-        <div className="auth-panel__label"><KeyRound size={14}/>{mode === 'login' ? 'MEMBER ACCESS' : 'USE INVITATION'}</div>
+        <div className="auth-panel__label"><KeyRound size={14} aria-hidden="true"/>{mode === 'login' ? 'Member access' : 'Use invitation'}</div>
         <h2 id="auth-title">{mode === 'login' ? 'Welcome back.' : 'Create your account.'}</h2>
         <p>{mode === 'login' ? 'Enter your local Overroot account.' : 'No email or two-factor setup—just a username and password.'}</p>
         {setupRequired && mode === 'login' && <div className="setup-note"><strong>First-time setup is required.</strong><span>Create the administrator from the local terminal with <code>pnpm admin:create</code>.</span></div>}
@@ -60,6 +60,6 @@ export function AuthPage({ mode }: { mode: 'login' | 'register' }) {
         <div className="auth-switch">{mode === 'login' ? <>Have an invitation? <Link to="/register">Create an account</Link></> : <>Already a member? <Link to="/login">Sign in</Link></>}</div>
       </section>
     </main>
-    <footer className="auth-footer"><span>INVITE-ONLY · SELF-HOSTED</span><span>Overroot is independent and unaffiliated with other LaTeX services.</span></footer>
+    <footer className="auth-footer"><span>Invite-only · Self-hosted</span><span>Overroot is independent and unaffiliated with other LaTeX services.</span></footer>
   </div>;
 }
