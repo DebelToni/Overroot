@@ -79,8 +79,10 @@ export class Compiler {
     const cachedPdf = join(this.cacheDir, `${sourceHash}.pdf`);
     const cachedLog = join(this.cacheDir, `${sourceHash}.log`);
     if (await fileExists(cachedPdf)) {
+      const cachedSynctex = join(this.cacheDir, `${sourceHash}.synctex.gz`);
+      const synctexPath = await fileExists(cachedSynctex) ? cachedSynctex : null;
       const now = new Date().toISOString();
-      const job = this.insertJob(project, sourceHash, actor, 'succeeded', now, now, cachedPdf, await readOptional(cachedLog), null);
+      const job = this.insertJob(project, sourceHash, actor, 'succeeded', now, now, cachedPdf, await readOptional(cachedLog), null, synctexPath);
       this.events.emit(project.id, { type: 'compile.ready', job: publicCompileJob(job), cached: true });
       return job;
     }
@@ -154,7 +156,8 @@ export class Compiler {
     finishedAt: string | null = null,
     pdfPath: string | null = null,
     log = '',
-    error: string | null = null
+    error: string | null = null,
+    synctexPath: string | null = null
   ): CompileJob {
     const job: CompileJob = {
       id: randomUUID(),
@@ -163,7 +166,7 @@ export class Compiler {
       status,
       entry_file: project.entry_file,
       pdf_path: pdfPath,
-      synctex_path: null,
+      synctex_path: synctexPath,
       log,
       error,
       requested_by_type: actor.type,

@@ -267,6 +267,14 @@ describe('Overroot API', () => {
     });
     expect(cached.statusCode).toBe(200);
     expect(cached.json().job.status).toBe('succeeded');
+    expect(cached.json().job.hasSynctex).toBe(true);
+    const cachedLocation = await app.inject({
+      method: 'GET',
+      url: `/api/v1/projects/${project.hash}/compile/${cached.json().job.id}/synctex?path=main.tex&line=10`,
+      headers: bearer(adminToken)
+    });
+    expect(cachedLocation.statusCode).toBe(200);
+    expect(cachedLocation.json()).toEqual(sourceLocation.json());
   });
 });
 
