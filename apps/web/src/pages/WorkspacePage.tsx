@@ -190,6 +190,7 @@ export function WorkspacePage() {
     const requestId = ++selectionRequest.current;
     try {
       await editorFlush.current?.();
+      if (requestId !== selectionRequest.current) return;
       const response = await api.getFile(hash, file.id);
       if (requestId === selectionRequest.current) {
         setSelected(response.file);
@@ -202,11 +203,14 @@ export function WorkspacePage() {
   }
 
   async function switchEditorMode(mode: 'manuscript' | 'files') {
+    const requestId = ++selectionRequest.current;
     if (mode === editorMode) return;
     try {
       await editorFlush.current?.();
-      setEditorMode(mode);
-    } catch { setError('Wait for the editor to synchronize before switching views. Your edits are still in the current view.'); }
+      if (requestId === selectionRequest.current) setEditorMode(mode);
+    } catch {
+      if (requestId === selectionRequest.current) setError('Wait for the editor to synchronize before switching views. Your edits are still in the current view.');
+    }
   }
 
   async function createFile(path: string) {
