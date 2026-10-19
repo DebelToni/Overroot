@@ -53,33 +53,33 @@ async function openWorkspace() {
 describe('source-view navigation races', () => {
   it('still opens a selected file when no newer choice supersedes it', async () => {
     await openWorkspace();
-    fireEvent.click(screen.getByRole('button', { name: 'result.tex', exact: true }));
+    fireEvent.click(screen.getByRole('button', { name: 'result.tex' }));
     await screen.findByText('File test editor');
-    expect(screen.getByRole('button', { name: 'Files', exact: true })).toHaveAttribute('aria-pressed', 'true');
+    expect(screen.getByRole('button', { name: 'Files' })).toHaveAttribute('aria-pressed', 'true');
   });
 
   it('ignores a delayed file selection after the user chooses Manuscript', async () => {
     const pending = deferred<{ file: typeof result }>();
     harness.api.getFile.mockImplementation((_hash: string, id: string) => id === 'result' ? pending.promise : Promise.resolve({ file: main }));
     await openWorkspace();
-    fireEvent.click(screen.getByRole('button', { name: 'result.tex', exact: true }));
+    fireEvent.click(screen.getByRole('button', { name: 'result.tex' }));
     await waitFor(() => expect(harness.api.getFile).toHaveBeenCalledWith('project', 'result'));
-    fireEvent.click(screen.getByRole('button', { name: 'Manuscript', exact: true }));
+    fireEvent.click(screen.getByRole('button', { name: 'Manuscript' }));
     await act(async () => { pending.resolve({ file: result }); });
-    expect(screen.getByRole('button', { name: 'Manuscript', exact: true })).toHaveAttribute('aria-pressed', 'true');
+    expect(screen.getByRole('button', { name: 'Manuscript' })).toHaveAttribute('aria-pressed', 'true');
     expect(screen.getByText('Manuscript test editor')).toBeInTheDocument();
   });
 
   it('cancels a pending Manuscript switch when the user chooses Files again', async () => {
     await openWorkspace();
-    fireEvent.click(screen.getByRole('button', { name: 'Files', exact: true }));
+    fireEvent.click(screen.getByRole('button', { name: 'Files' }));
     await screen.findByText('File test editor');
     const pending = deferred<void>();
     harness.flush.mockImplementation(() => pending.promise);
-    fireEvent.click(screen.getByRole('button', { name: 'Manuscript', exact: true }));
-    fireEvent.click(screen.getByRole('button', { name: 'Files', exact: true }));
+    fireEvent.click(screen.getByRole('button', { name: 'Manuscript' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Files' }));
     await act(async () => { pending.resolve(); });
-    expect(screen.getByRole('button', { name: 'Files', exact: true })).toHaveAttribute('aria-pressed', 'true');
+    expect(screen.getByRole('button', { name: 'Files' })).toHaveAttribute('aria-pressed', 'true');
     expect(screen.getByText('File test editor')).toBeInTheDocument();
   });
 
@@ -87,9 +87,9 @@ describe('source-view navigation races', () => {
     const pending = deferred<{ file: typeof result }>();
     harness.api.getFile.mockImplementation((_hash: string, id: string) => id === 'result' ? pending.promise : Promise.resolve({ file: main }));
     await openWorkspace();
-    fireEvent.click(screen.getByRole('button', { name: 'result.tex', exact: true }));
+    fireEvent.click(screen.getByRole('button', { name: 'result.tex' }));
     await waitFor(() => expect(harness.api.getFile).toHaveBeenCalledWith('project', 'result'));
-    fireEvent.click(screen.getByRole('button', { name: 'Manuscript', exact: true }));
+    fireEvent.click(screen.getByRole('button', { name: 'Manuscript' }));
     await act(async () => { pending.reject(new Error('late file failure')); });
     expect(screen.queryByText('late file failure')).not.toBeInTheDocument();
     expect(screen.getByText('Manuscript test editor')).toBeInTheDocument();
