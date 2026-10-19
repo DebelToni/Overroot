@@ -192,10 +192,15 @@ export function WorkspacePage() {
     try {
       await editorFlush.current?.();
       if (requestId !== navigationRequest.current) return;
+      const contentRequestId = selectionRequest.current;
       const response = await api.getFile(hash, file.id);
       if (requestId === navigationRequest.current) {
-        ++selectionRequest.current;
-        setSelected(response.file);
+        // Reopening the current file must not overwrite or cancel a newer refresh.
+        // A different target still takes precedence over refreshes of the old file.
+        if (file.id !== selected?.id || contentRequestId === selectionRequest.current) {
+          ++selectionRequest.current;
+          setSelected(response.file);
+        }
         setEditorMode('files');
         setMobilePane('editor');
       }

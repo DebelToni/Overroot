@@ -38,7 +38,7 @@ function deferred<T>() {
   return { promise, resolve, reject };
 }
 beforeEach(() => {
-  vi.clearAllMocks();
+  vi.resetAllMocks();
   harness.flush.mockImplementation(async () => {});
   harness.api.getProject.mockResolvedValue({ project: { hash: 'project', name: 'Paper', entryFile: 'main.tex', role: 'owner', canWrite: true, canManage: true, memberCount: 1 } });
   harness.api.listFiles.mockResolvedValue({ files: [main, result] });
@@ -52,6 +52,36 @@ async function openWorkspace() {
 }
 
 describe('source-view navigation races', () => {
+  it.each([
+    ['manuscript', 'navigation first'], ['manuscript', 'refresh first'],
+    ['files', 'navigation first'], ['files', 'refresh first']
+  ])('preserves the latest read-only content when selecting the current file from %s with %s', async (mode, completionOrder) => {
+    harness.api.getProject.mockResolvedValue({ project: { hash: 'project', name: 'Paper', entryFile: 'main.tex', role: 'viewer', canWrite: false, canManage: false, memberCount: 1 } });
+    await openWorkspace();
+    if (mode === 'files') {
+      fireEvent.click(screen.getByRole('button', { name: 'Files' }));
+      await screen.findByText('File test editor');
+    }
+    const navigation = deferred<{ file: typeof main }>();
+    const refresh = deferred<{ file: typeof main }>();
+    harness.api.getFile.mockReturnValueOnce(navigation.promise).mockReturnValueOnce(refresh.promise);
+    fireEvent.click(screen.getByRole('button', { name: /^main\.tex/ }));
+    await waitFor(() => expect(harness.api.getFile).toHaveBeenCalledTimes(2));
+    act(() => { harness.onEvent!({ type: 'file.changed', fileId: main.id }); });
+    expect(harness.api.getFile).toHaveBeenCalledTimes(3);
+    const finishNavigation = async () => { await act(async () => { navigation.resolve({ file: main }); }); };
+    const finishRefresh = async () => { await act(async () => { refresh.resolve({ file: { ...main, content: 'Newest collaborator text' } }); }); };
+    if (completionOrder === 'navigation first') {
+      await finishNavigation();
+      await finishRefresh();
+    } else {
+      await finishRefresh();
+      await finishNavigation();
+    }
+    expect(screen.getByRole('button', { name: 'Files' })).toHaveAttribute('aria-pressed', 'true');
+    expect(screen.getByText('Newest collaborator text')).toBeInTheDocument();
+  });
+
   it.each(['file.changed', 'agent.changed'])('preserves a read-only %s refresh when the already-selected Files button is clicked', async (type) => {
     harness.api.getProject.mockResolvedValue({ project: { hash: 'project', name: 'Paper', entryFile: 'main.tex', role: 'viewer', canWrite: false, canManage: false, memberCount: 1 } });
     await openWorkspace();
