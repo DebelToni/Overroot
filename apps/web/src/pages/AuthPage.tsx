@@ -1,5 +1,5 @@
 import { ArrowRight, FileText, KeyRound, Layers, Users } from 'lucide-react';
-import { useEffect, useState, type FormEvent } from 'react';
+import { useEffect, useRef, useState, type FormEvent } from 'react';
 import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import { Brand } from '../components/Brand';
 import { InlineError } from '../components/Feedback';
@@ -19,23 +19,34 @@ export function AuthPage({ mode }: { mode: 'login' | 'register' }) {
   const [busy, setBusy] = useState(false);
   const [setupRequired, setSetupRequired] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const requestId = useRef(0);
   const progressLabel = mode === 'login' ? 'Signing in…' : 'Creating account…';
 
   useEffect(() => {
+    let active = true;
     if (token) navigate('/', { replace: true });
-    void api.request<{ setupRequired: boolean }>('/api/v1/status').then((status) => setSetupRequired(status.setupRequired)).catch(() => {});
+    void api.request<{ setupRequired: boolean }>('/api/v1/status').then((status) => { if (active) setSetupRequired(status.setupRequired); }).catch(() => {});
+    return () => { active = false; };
   }, [api, token, navigate]);
+
+  useEffect(() => {
+    requestId.current += 1;
+    setBusy(false); setError(null);
+    return () => { requestId.current += 1; };
+  }, [api, mode]);
 
   async function submit(event: FormEvent) {
     event.preventDefault();
     if (busy) return;
+    const currentRequest = ++requestId.current;
     setBusy(true); setError(null);
     try {
       const session = mode === 'login' ? await api.login(username, password) : await api.register(invite, username, password);
+      if (currentRequest !== requestId.current) return;
       setSession(session.token, session.user);
       navigate('/', { replace: true });
-    } catch (reason) { setError(reason instanceof Error ? reason.message : 'Authentication failed'); }
-    finally { setBusy(false); }
+    } catch (reason) { if (currentRequest === requestId.current) setError(reason instanceof Error ? reason.message : 'Authentication failed'); }
+    finally { if (currentRequest === requestId.current) setBusy(false); }
   }
 
   return <div className="auth-shell">

@@ -1,5 +1,5 @@
 import { CalendarClock, Check, KeyRound, Link2, Plus, Trash2 } from 'lucide-react';
-import { useEffect, useState, type FormEvent } from 'react';
+import { useEffect, useRef, useState, type FormEvent } from 'react';
 import type { ApiClient, CreatedInvite, InviteSummary } from '../lib/api';
 import { relativeTime } from '../lib/format';
 import type { Template } from '../types';
@@ -12,28 +12,44 @@ export function NewProjectDialog({
   open,
   templates,
   onClose,
-  onCreate
+  onCreate,
+  onPendingChange
 }: {
   open: boolean;
   templates: Template[];
   onClose: () => void;
   onCreate: (name: string, template: string) => Promise<void>;
+  onPendingChange?: (pending: boolean) => void;
 }) {
   const [name, setName] = useState('Untitled paper');
   const [template, setTemplate] = useState('article');
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  useEffect(() => { if (open) { setName('Untitled paper'); setTemplate(templates[0]?.id ?? 'article'); setError(null); } }, [open, templates]);
+  const active = useRef(false);
+  const visible = useRef(open);
+  useEffect(() => { active.current = true; return () => { active.current = false; }; }, []);
+  useEffect(() => {
+    visible.current = open;
+    // Reopening an in-flight operation must show the draft actually being created.
+    if (open && !busy) { setName('Untitled paper'); setTemplate(templates[0]?.id ?? 'article'); setError(null); }
+  }, [open]);
   async function submit(event: FormEvent) {
     event.preventDefault();
     if (busy) return;
-    setBusy(true); setError(null);
-    try { await onCreate(name, template); onClose(); } catch (reason) { setError(reason instanceof Error ? reason.message : 'Could not create project'); } finally { setBusy(false); }
+    setBusy(true); setError(null); onPendingChange?.(true);
+    try {
+      await onCreate(name, template);
+      if (active.current && visible.current) onClose();
+    } catch (reason) {
+      if (active.current) setError(reason instanceof Error ? reason.message : 'Could not create project');
+    } finally {
+      if (active.current) { setBusy(false); onPendingChange?.(false); }
+    }
   }
   return <Modal open={open} onClose={onClose} title="Start a new project" eyebrow="New project" size="large">
     <form onSubmit={submit} className="stack-form">
-      <label className="field"><span>Project name</span><input autoFocus value={name} onChange={(event) => setName(event.target.value)} maxLength={100} required/></label>
-      <fieldset className="template-grid"><legend>Choose a starting point</legend>
+      <label className="field"><span>Project name</span><input autoFocus value={name} onChange={(event) => setName(event.target.value)} maxLength={100} required disabled={busy}/></label>
+      <fieldset className="template-grid" disabled={busy}><legend>Choose a starting point</legend>
         {templates.map((item) => <label key={item.id} className={`template-card ${template === item.id ? 'is-selected' : ''}`}>
           <input type="radio" name="template" value={item.id} checked={template === item.id} onChange={() => setTemplate(item.id)}/>
           <span className="template-card__check">{template === item.id && <Check size={13}/>}</span>
@@ -41,7 +57,8 @@ export function NewProjectDialog({
         </label>)}
       </fieldset>
       <InlineError message={error}/>
-      <div className="form-actions"><button type="button" className="plain-button" onClick={onClose}>Cancel</button><button type="submit" className="primary-button" disabled={busy || !name.trim()} aria-busy={busy} aria-label={busy ? 'Creating project…' : undefined}>{busy ? <PendingLabel>Creating project…</PendingLabel> : 'Create project'}</button></div>
+      {busy && <p className="dialog-copy">You can close this dialog while the project is created.</p>}
+      <div className="form-actions"><button type="button" className="plain-button" onClick={onClose}>{busy ? 'Close' : 'Cancel'}</button><button type="submit" className="primary-button" disabled={busy || !name.trim()} aria-busy={busy} aria-label={busy ? 'Creating project…' : undefined}>{busy ? <PendingLabel>Creating project…</PendingLabel> : 'Create project'}</button></div>
     </form>
   </Modal>;
 }
