@@ -69,12 +69,25 @@ button:focus-visible, a:focus-visible, input:focus-visible, select:focus-visible
 
 .brand { display: inline-flex; align-items: center; gap: 11px; min-width: 0; color: var(--ink); text-decoration: none; }
 .brand__mark { width: 36px; height: 36px; flex: 0 0 auto; display: grid; place-items: center; border-radius: 10px; background: var(--accent); }
-.brand__mark svg { width: 27px; height: 27px; fill: var(--on-accent); }
-.brand__mark .brand__vein { fill: none; stroke: var(--accent); stroke-width: 1.6; }
+.brand__mark .root-mark { width: 29px; height: 29px; color: var(--on-accent); }
 .brand__copy { min-width: 0; }
 .brand__copy strong { display: block; font-size: 18px; line-height: 1.1; letter-spacing: -.03em; }
 .brand__copy small { display: block; max-width: 220px; margin-top: 4px; overflow: hidden; color: var(--muted); font: 400 11px/1.3 var(--sans); text-overflow: ellipsis; white-space: nowrap; }
 .brand--compact .brand__mark { width: 27px; height: 27px; }
+.brand--compact .root-mark { width: 24px; height: 24px; }
+.root-mark { width: 24px; height: 24px; flex: 0 0 auto; fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
+.root-mark__trace { display: none; }
+.root-mark--grow .root-mark__trace { display: block; opacity: .22; }
+.root-mark--enter .root-mark__growth path { stroke-dasharray: 1; animation: root-arrive .75s ease-out both; }
+.root-mark--grow .root-mark__growth path { stroke-dasharray: 1; animation: root-grow 1.8s ease-in-out infinite; }
+.root-mark--enter .root-mark__main, .root-mark--grow .root-mark__main { animation-delay: .12s; }
+.root-mark--enter .root-mark__fine, .root-mark--grow .root-mark__fine { animation-delay: .24s; }
+.pending-label { display: inline-flex; align-items: center; justify-content: center; gap: 8px; }
+.pending-label .root-mark { width: 20px; height: 20px; }
+.primary-button--wide[aria-busy="true"] { justify-content: center; }
+button[aria-busy="true"]:disabled { opacity: .82; }
+@keyframes root-arrive { from { stroke-dashoffset: 1; } to { stroke-dashoffset: 0; } }
+@keyframes root-grow { 0% { stroke-dashoffset: 1; opacity: .3; } 55%, 85% { stroke-dashoffset: 0; opacity: 1; } 100% { stroke-dashoffset: 0; opacity: 0; } }
 
 .eyebrow { color: var(--accent); font: 650 11px/1.4 var(--sans); letter-spacing: .08em; text-transform: uppercase; }
 .accent-line { height: 2px; background: var(--surface-2); position: relative; }
@@ -121,6 +134,7 @@ button:disabled { cursor: default; opacity: .42; }
 .inline-message--error { border-color: var(--red); background: var(--red-soft); color: var(--red); }
 .inline-message--success { border-color: var(--green); background: var(--green-soft); color: var(--green); }
 .loading-block { min-height: 86px; display: flex; align-items: center; justify-content: center; gap: 9px; color: var(--muted); font: 680 11px/1 var(--mono); letter-spacing: .08em; text-transform: uppercase; }
+.loading-block .root-mark { width: 30px; height: 30px; color: var(--accent); }
 .spin { animation: spin 1s linear infinite; }
 @keyframes spin { to { transform: rotate(360deg); } }
 
@@ -497,6 +511,8 @@ button:disabled { cursor: default; opacity: .42; }
 
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { scroll-behavior: auto !important; transition-duration: .01ms !important; animation-duration: .01ms !important; animation-iteration-count: 1 !important; }
+  .root-mark .root-mark__growth path { animation: none !important; stroke-dashoffset: 0; opacity: 1; }
+  .root-mark .root-mark__trace { display: none; }
 }
 .user-chip { padding: 0; border: 0; background: transparent; color: var(--ink); text-align: left; cursor: pointer; }
 .user-chip:hover b { color: var(--accent); }

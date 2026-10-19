@@ -3,6 +3,7 @@ import { useEffect, useState, type FormEvent } from 'react';
 import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import { Brand } from '../components/Brand';
 import { InlineError } from '../components/Feedback';
+import { PendingLabel } from '../components/RootMark';
 import { ThemeControl } from '../components/ThemeControl';
 import { useTheme } from '../hooks/useTheme';
 import { useSession } from '../lib/session';
@@ -18,6 +19,7 @@ export function AuthPage({ mode }: { mode: 'login' | 'register' }) {
   const [busy, setBusy] = useState(false);
   const [setupRequired, setSetupRequired] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const progressLabel = mode === 'login' ? 'Signing in…' : 'Creating account…';
 
   useEffect(() => {
     if (token) navigate('/', { replace: true });
@@ -26,6 +28,7 @@ export function AuthPage({ mode }: { mode: 'login' | 'register' }) {
 
   async function submit(event: FormEvent) {
     event.preventDefault();
+    if (busy) return;
     setBusy(true); setError(null);
     try {
       const session = mode === 'login' ? await api.login(username, password) : await api.register(invite, username, password);
@@ -54,7 +57,7 @@ export function AuthPage({ mode }: { mode: 'login' | 'register' }) {
           <label className="field"><span>Username</span><input value={username} onChange={(event) => setUsername(event.target.value)} required minLength={3} maxLength={32} autoComplete="username" autoFocus={mode === 'login'}/></label>
           <label className="field"><span>Password</span><input type="password" value={password} onChange={(event) => setPassword(event.target.value)} required minLength={8} autoComplete={mode === 'login' ? 'current-password' : 'new-password'}/></label>
           <InlineError message={error}/>
-          <button className="primary-button primary-button--wide" type="submit" disabled={busy}>{busy ? 'Please wait…' : mode === 'login' ? <>Sign in <ArrowRight size={15}/></> : <>Join Overroot <ArrowRight size={15}/></>}</button>
+          <button className="primary-button primary-button--wide" type="submit" disabled={busy} aria-busy={busy} aria-label={busy ? progressLabel : undefined}>{busy ? <PendingLabel>{progressLabel}</PendingLabel> : mode === 'login' ? <>Sign in <ArrowRight size={15}/></> : <>Join Overroot <ArrowRight size={15}/></>}</button>
         </form>
         <div className="auth-switch">{mode === 'login' ? <>Have an invitation? <Link to="/register">Create an account</Link></> : <>Already a member? <Link to="/login">Sign in</Link></>}</div>
       </section>
