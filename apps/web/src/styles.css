@@ -269,7 +269,16 @@ button:disabled { cursor: default; opacity: .42; }
 .workspace-tree-wrap.is-collapsed + .editor-pdf { margin-left: 0; }
 .workspace-tree-wrap.is-collapsed ~ .tree-toggle, .workspace-body:has(.workspace-tree-wrap.is-collapsed) .tree-toggle { left: 27px; transform: none; border: 1px solid var(--line); }
 .editor-pdf { min-width: 0; flex: 1; display: flex; }
-.editor-wrap { width: var(--editor-percent); min-width: 260px; min-height: 0; overflow: hidden; }
+.editor-wrap { width: var(--editor-percent); min-width: 260px; min-height: 0; overflow: hidden; display: flex; flex-direction: column; }
+.editor-wrap > .editor-pane, .editor-wrap > .manuscript-pane { flex: 1; min-height: 0; }
+.editor-mode { display: flex; gap: 4px; padding: 6px 12px; border-bottom: 1px solid var(--line); }
+.editor-mode button { border: 0; border-radius: 4px; padding: 6px 10px; color: var(--muted); background: transparent; cursor: pointer; font: inherit; font-size: 12px; }
+.editor-mode button[aria-pressed="true"] { color: var(--text); background: var(--surface-hover, #5e6ad21a); }
+.editor-mode button:focus-visible { outline: 2px solid #5e6ad2; outline-offset: 1px; }
+.manuscript-pane { display: flex; flex-direction: column; overflow: hidden; }
+.manuscript-pane > .pane-label { flex: 0 0 36px; }
+.manuscript-pane > .editor-mount { flex: 1; }
+.manuscript-notice { flex-shrink: 0; max-height: 120px; overflow: auto; padding: 8px 14px; border-bottom: 1px solid var(--line); color: var(--muted); font-size: 12px; }
 .pdf-wrap { width: calc(100% - var(--editor-percent)); min-width: 280px; min-height: 0; overflow: hidden; }
 .split-handle { position: relative; width: 5px; flex: 0 0 5px; background: var(--line); cursor: col-resize; touch-action: none; }
 .split-handle::after { content: ""; position: absolute; inset: 0 -3px; }

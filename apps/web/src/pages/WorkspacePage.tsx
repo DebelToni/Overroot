@@ -26,6 +26,7 @@ import {
 import type { CompileJob, ProjectDetail, ProjectEvent, ProjectFile, SourceLocation } from '../types';
 
 const EditorPane = lazy(() => import('../components/EditorPane').then((module) => ({ default: module.EditorPane })));
+const ManuscriptPane = lazy(() => import('../components/ManuscriptPane').then((module) => ({ default: module.ManuscriptPane })));
 const PdfViewer = lazy(() => import('../components/PdfViewer').then((module) => ({ default: module.PdfViewer })));
 
 export function WorkspacePage() {
@@ -36,6 +37,7 @@ export function WorkspacePage() {
   const [project, setProject] = useState<ProjectDetail | null>(null);
   const [files, setFiles] = useState<ProjectFile[]>([]);
   const [selected, setSelected] = useState<ProjectFile | null>(null);
+  const [editorMode, setEditorMode] = useState<'manuscript' | 'files'>('manuscript');
   const [job, setJob] = useState<CompileJob | null>(null);
   const [pdf, setPdf] = useState<ArrayBuffer | null>(null);
   const [pdfRevision, setPdfRevision] = useState<string | null>(null);
@@ -187,14 +189,24 @@ export function WorkspacePage() {
     setError(null);
     const requestId = ++selectionRequest.current;
     try {
+      await editorFlush.current?.();
       const response = await api.getFile(hash, file.id);
       if (requestId === selectionRequest.current) {
         setSelected(response.file);
+        setEditorMode('files');
         setMobilePane('editor');
       }
     } catch (reason) {
       if (requestId === selectionRequest.current) setError(reason instanceof Error ? reason.message : 'Could not open file');
     }
+  }
+
+  async function switchEditorMode(mode: 'manuscript' | 'files') {
+    if (mode === editorMode) return;
+    try {
+      await editorFlush.current?.();
+      setEditorMode(mode);
+    } catch { setError('Wait for the editor to synchronize before switching views. Your edits are still in the current view.'); }
   }
 
   async function createFile(path: string) {
@@ -304,14 +316,22 @@ export function WorkspacePage() {
         <FileTree files={files} selectedId={selected?.id ?? null} entryFile={project.entryFile} canWrite={project.canWrite} onSelect={(file) => void selectFile(file)} onCreate={() => setNewFileOpen(true)} onUpload={(items) => void uploadFiles(items)} onFileMenu={setFileActions}/>
       </div>
       <div ref={workspaceRef} className="editor-pdf" style={{ '--editor-percent': `${editorPercent}%` } as React.CSSProperties}>
-        <div className="editor-wrap"><Suspense fallback={<LoadingBlock label="Loading editor"/>}><EditorPane api={api} projectHash={hash} file={selected} user={user} canWrite={project.canWrite} dark={theme.resolved === 'dark'} onPresence={onPresence} onFlushReady={onFlushReady} onCursorChange={onCursorChange}/></Suspense></div>
+        <div className="editor-wrap">
+          <div className="editor-mode" role="group" aria-label="Source view">
+            <button type="button" aria-pressed={editorMode === 'manuscript'} onClick={() => void switchEditorMode('manuscript')}>Manuscript</button>
+            <button type="button" aria-pressed={editorMode === 'files'} onClick={() => void switchEditorMode('files')}>Files</button>
+          </div>
+          <Suspense fallback={<LoadingBlock label="Loading editor"/>}>{editorMode === 'manuscript'
+            ? <ManuscriptPane api={api} projectHash={hash} entryFile={project.entryFile} files={files} user={user} canWrite={project.canWrite} dark={theme.resolved === 'dark'} refreshKey={historyKey} onPresence={onPresence} onFlushReady={onFlushReady} onCursorChange={onCursorChange}/>
+            : <EditorPane api={api} projectHash={hash} file={selected} user={user} canWrite={project.canWrite} dark={theme.resolved === 'dark'} onPresence={onPresence} onFlushReady={onFlushReady} onCursorChange={onCursorChange}/>}</Suspense>
+        </div>
         <div className="split-handle" role="separator" aria-orientation="vertical" onPointerDown={resizeStart}/>
         <div className="pdf-wrap"><Suspense fallback={<LoadingBlock label="Loading PDF viewer"/>}><PdfViewer key={hash} api={api} projectHash={hash} data={pdf} revision={pdfRevision} synctexJobId={pdfJobId} sourceLocation={sourceLocation} loading={pdfLoading || compiling} focusMode={focusPdf} onFocusMode={setFocusPdf} projectName={project.name}/></Suspense></div>
       </div>
     </main>
     <footer className="workspace-status">
       <button type="button" onClick={() => setLogOpen(true)} className={`compile-state compile-state--${job?.status ?? 'idle'}`}><i/>{job ? job.status : 'Not compiled'}{job?.finishedAt && <span> · {relativeTime(job.finishedAt)}</span>}</button>
-      <span>{selected ? `${selected.path} · ${selected.kind}` : 'No file selected'}</span><span className="workspace-status__spacer"/><span>{project.memberCount} member{project.memberCount === 1 ? '' : 's'}</span>
+      <span>{editorMode === 'manuscript' ? `Manuscript${sourceLocation ? ` · ${sourceLocation.path}:${sourceLocation.line}` : ''}` : selected ? `${selected.path} · ${selected.kind}` : 'No file selected'}</span><span className="workspace-status__spacer"/><span>{project.memberCount} member{project.memberCount === 1 ? '' : 's'}</span>
     </footer>
     <InlineError message={error}/>
 
@@ -320,7 +340,7 @@ export function WorkspacePage() {
     <ShareDialog open={shareOpen} onClose={() => setShareOpen(false)} api={api} project={project}/>
     {project.canManage && <AgentDialog open={agentOpen} onClose={() => setAgentOpen(false)} api={api} project={project}/>} 
     {project.canManage && <ProjectSettingsDialog open={settingsOpen} onClose={() => setSettingsOpen(false)} api={api} project={project} files={files} onChanged={setProject} onDeleted={() => navigate('/')}/>} 
-    <HistoryDrawer open={historyOpen} onClose={() => setHistoryOpen(false)} api={api} projectHash={hash} file={selected} canWrite={project.canWrite} refreshKey={historyKey}/>
+    <HistoryDrawer open={historyOpen} onClose={() => setHistoryOpen(false)} api={api} projectHash={hash} file={editorMode === 'manuscript' ? files.find((file) => file.path === sourceLocation?.path) ?? selected : selected} canWrite={project.canWrite} refreshKey={historyKey}/>
     <CompileLogDrawer open={logOpen} onClose={() => setLogOpen(false)} status={job?.status ?? 'Not compiled'} log={job?.log ?? ''} error={job?.error ?? null}/>
     <Modal open={mobileMenuOpen} onClose={() => setMobileMenuOpen(false)} title={project.name} eyebrow="Workspace actions" size="small"><div className="mobile-action-list">
       <button type="button" onClick={() => { setMobileMenuOpen(false); setHistoryOpen(true); }}><History size={16}/><span><strong>History</strong><small>Review and restore file revisions</small></span></button>
