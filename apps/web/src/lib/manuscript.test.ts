@@ -42,4 +42,12 @@ describe('manuscript source projection', () => {
     expect(manuscript.warnings).toEqual([]);
     expect(manuscript.spans.some((span) => span.fileId === 'empty.tex' && span.from === span.to)).toBe(true);
   });
+
+  it('never maps absolute or above-root inputs into unrelated project files', () => {
+    for (const input of ['../body', '/body', 'C:/body']) {
+      const manuscript = buildManuscript('main.tex', [file('main.tex', `\\input{${input}}`), file('body.tex', 'Unrelated body')]);
+      expect(manuscript.text).not.toContain('Unrelated body');
+      expect(manuscript.warnings).toHaveLength(1);
+    }
+  });
 });
