@@ -9,7 +9,7 @@ import { HttpError } from './errors.js';
 import type { ProjectStore } from './project-store.js';
 import type { ActorIdentity, ProjectRecord } from './types.js';
 import { stageCompileSources, type CompileSource } from './compile-staging.js';
-import { hasPdfSignature } from './compile-artifacts.js';
+import { hasPdfEnvelope } from './compile-artifacts.js';
 
 export interface CompileJob {
   id: string;
@@ -127,7 +127,7 @@ export class Compiler {
 
       const cachedPdf = join(this.cacheDir, `${sourceHash}.pdf`);
       const cachedLog = join(this.cacheDir, `${sourceHash}.log`);
-      if (await fileExists(cachedPdf)) {
+      if (await fileExists(cachedPdf) && await validCachedPdf(cachedPdf)) {
         const cachedSynctex = join(this.cacheDir, `${sourceHash}.synctex.gz`);
         const synctexPath = await fileExists(cachedSynctex) ? cachedSynctex : null;
         const now = new Date().toISOString();
@@ -263,6 +263,7 @@ export class Compiler {
 
     const workDir = join(this.jobsDir, job.id);
     const outputDir = join(workDir, '.overroot-output');
+    const temporaryArtifacts: string[] = [];
     try {
       await stageCompileSources(workDir, sources);
 
@@ -313,13 +314,16 @@ export class Compiler {
       const synctexPath = (await fileExists(generatedSynctex)) ? join(this.cacheDir, `${job.source_hash}.synctex.gz`) : null;
       const pdfTemp = `${pdfPath}.${job.id}.tmp`;
       const logTemp = `${logPath}.${job.id}.tmp`;
+      // Register before writing: even a failed copy can leave a partial file.
+      temporaryArtifacts.push(pdfTemp, logTemp);
       await copyFile(generatedPdf, pdfTemp);
-      if (!(await hasPdfSignature(pdfTemp))) throw new Error('Compiler produced an invalid PDF');
+      if (!(await hasPdfEnvelope(pdfTemp))) throw new Error('Compiler produced an invalid PDF');
       await writeFile(logTemp, log, { mode: 0o600 });
       await rename(pdfTemp, pdfPath);
       await rename(logTemp, logPath);
       if (synctexPath) {
         const synctexTemp = `${synctexPath}.${job.id}.tmp`;
+        temporaryArtifacts.push(synctexTemp);
         await copyFile(generatedSynctex, synctexTemp);
         await rename(synctexTemp, synctexPath);
       }
@@ -349,7 +353,7 @@ export class Compiler {
       const failed = this.get(job.id, project.id)!;
       this.events.emit(project.id, { type: 'compile.failed', job: publicCompileJob(failed) });
     } finally {
-      await rm(workDir, { recursive: true, force: true });
+      await cleanupCompileFiles(workDir, temporaryArtifacts);
     }
   }
 
@@ -493,6 +497,28 @@ async function fileExists(path: string): Promise<boolean> {
   } catch {
     return false;
   }
+}
+
+async function validCachedPdf(path: string): Promise<boolean> {
+  try {
+    return await hasPdfEnvelope(path);
+  } catch (error) {
+    // A cache artifact can disappear between stat and open. Recompile the
+    // already frozen snapshot instead of reporting a successful broken cache hit.
+    if ((error as NodeJS.ErrnoException).code === 'ENOENT') return false;
+    throw error;
+  }
+}
+
+async function cleanupCompileFiles(workDir: string, temporaryArtifacts: readonly string[]): Promise<void> {
+  const cleanup = await Promise.allSettled([
+    rm(workDir, { recursive: true, force: true }),
+    ...temporaryArtifacts.map(path => rm(path, { force: true }))
+  ]);
+  // Drain every cleanup operation before releasing the job's admission slot.
+  // Final cache artifacts and other jobs' temporary files are never removed.
+  const failure = cleanup.find(result => result.status === 'rejected');
+  if (failure?.status === 'rejected') throw failure.reason;
 }
 
 async function readOptional(path: string): Promise<string> {
