@@ -68,7 +68,7 @@ export function DashboardPage() {
       <section className="dashboard-intro">
         <h1>Projects</h1>
         <div className="dashboard-intro__actions">
-          <button className="secondary-button" type="button" onClick={() => importInput.current?.click()} disabled={importing} aria-busy={importing}>{importing ? <PendingLabel>Importing ZIP…</PendingLabel> : <><Upload size={15}/>Import ZIP</>}</button>
+          <button className="secondary-button" type="button" onClick={() => importInput.current?.click()} disabled={importing} aria-busy={importing} aria-label={importing ? 'Importing ZIP…' : undefined}>{importing ? <PendingLabel>Importing ZIP…</PendingLabel> : <><Upload size={15}/>Import ZIP</>}</button>
           <input ref={importInput} hidden type="file" accept=".zip,application/zip" onChange={(event) => { const file = event.target.files?.[0]; if (file) void importZip(file); event.target.value = ''; }}/>
           <button className="primary-button" type="button" onClick={() => setNewOpen(true)}><Plus size={15}/> New project</button>
         </div>

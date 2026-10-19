@@ -41,7 +41,7 @@ export function NewProjectDialog({
         </label>)}
       </fieldset>
       <InlineError message={error}/>
-      <div className="form-actions"><button type="button" className="plain-button" onClick={onClose}>Cancel</button><button type="submit" className="primary-button" disabled={busy || !name.trim()} aria-busy={busy}>{busy ? <PendingLabel>Creating project…</PendingLabel> : 'Create project'}</button></div>
+      <div className="form-actions"><button type="button" className="plain-button" onClick={onClose}>Cancel</button><button type="submit" className="primary-button" disabled={busy || !name.trim()} aria-busy={busy} aria-label={busy ? 'Creating project…' : undefined}>{busy ? <PendingLabel>Creating project…</PendingLabel> : 'Create project'}</button></div>
     </form>
   </Modal>;
 }

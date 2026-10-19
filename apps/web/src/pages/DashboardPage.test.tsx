@@ -27,7 +27,10 @@ it('keeps import progress tied to the upload, then restores the action after an 
   const input = view.container.querySelector('input[type="file"]')!;
   const file = new File(['zip fixture'], 'paper.zip', { type: 'application/zip' });
   fireEvent.change(input, { target: { files: [file] } });
-  expect(screen.getByRole('button', { name: 'Importing ZIP…' })).toBeDisabled();
+  const importingButton = screen.getByRole('button', { name: 'Importing ZIP…' });
+  expect(importingButton).toBeDisabled();
+  expect(importingButton).toHaveAttribute('aria-label', 'Importing ZIP…');
+  expect(importingButton).toHaveAccessibleName('Importing ZIP…');
   expect(screen.getByRole('status')).toHaveTextContent('Importing ZIP…');
   fireEvent.change(input, { target: { files: [file] } });
   expect(harness.api.importProject).toHaveBeenCalledTimes(1);
@@ -36,6 +39,7 @@ it('keeps import progress tied to the upload, then restores the action after an 
   expect(screen.getByRole('alert')).toHaveTextContent('Invalid archive');
   expect(screen.queryByRole('status')).not.toBeInTheDocument();
   expect(screen.getByRole('button', { name: 'Import ZIP' })).toBeEnabled();
+  expect(screen.getByRole('button', { name: 'Import ZIP' })).not.toHaveAttribute('aria-label');
   fireEvent.change(input, { target: { files: [file] } });
   await screen.findByText('Imported workspace');
   expect(harness.api.importProject).toHaveBeenCalledTimes(2);

@@ -38,6 +38,9 @@ describe('authentication progress', () => {
     const button = screen.getByRole('button', { name: progress });
     expect(button).toBeDisabled();
     expect(button).toHaveAttribute('aria-busy', 'true');
+    // Chromium may defer descendant text while aria-busy; keep the name explicit.
+    expect(button).toHaveAttribute('aria-label', progress);
+    expect(button).toHaveAccessibleName(progress);
     expect(screen.getByRole('status')).toHaveTextContent(progress);
     expect(screen.getByRole('status').querySelector('svg')).toHaveAttribute('aria-hidden', 'true');
     fireEvent.submit(form);
@@ -46,7 +49,9 @@ describe('authentication progress', () => {
     await act(async () => { pending.reject(new Error('Please check your credentials')); });
     expect(screen.getByRole('alert')).toHaveTextContent('Please check your credentials');
     expect(screen.queryByRole('status')).not.toBeInTheDocument();
-    expect(screen.getByRole('button', { name: mode === 'login' ? 'Sign in' : 'Join Overroot' })).toBeEnabled();
+    const retryButton = screen.getByRole('button', { name: mode === 'login' ? 'Sign in' : 'Join Overroot' });
+    expect(retryButton).toBeEnabled();
+    expect(retryButton).not.toHaveAttribute('aria-label');
 
     const session = { token: 'local-test-token', user: { username: 'writer' } };
     harness.api[mode].mockResolvedValueOnce(session);

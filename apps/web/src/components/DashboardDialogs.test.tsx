@@ -13,7 +13,10 @@ it('keeps creation progress active until completion and allows retry after failu
   render(<NewProjectDialog open templates={[{ id: 'article', name: 'Article', description: 'A paper', entryFile: 'main.tex' }]} onCreate={onCreate} onClose={onClose}/>);
   const form = screen.getByLabelText('Project name').closest('form')!;
   fireEvent.submit(form);
-  expect(screen.getByRole('button', { name: 'Creating project…' })).toBeDisabled();
+  const creatingButton = screen.getByRole('button', { name: 'Creating project…' });
+  expect(creatingButton).toBeDisabled();
+  expect(creatingButton).toHaveAttribute('aria-label', 'Creating project…');
+  expect(creatingButton).toHaveAccessibleName('Creating project…');
   expect(screen.getByRole('status')).toHaveTextContent('Creating project…');
   fireEvent.submit(form);
   expect(onCreate).toHaveBeenCalledTimes(1);
@@ -23,6 +26,7 @@ it('keeps creation progress active until completion and allows retry after failu
   expect(screen.getByRole('alert')).toHaveTextContent('Could not create project');
   expect(screen.queryByRole('status')).not.toBeInTheDocument();
   expect(screen.getByRole('button', { name: 'Create project' })).toBeEnabled();
+  expect(screen.getByRole('button', { name: 'Create project' })).not.toHaveAttribute('aria-label');
   await act(async () => { fireEvent.submit(form); });
   expect(onCreate).toHaveBeenLastCalledWith('Untitled paper', 'article');
   expect(onClose).toHaveBeenCalledTimes(1);
