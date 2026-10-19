@@ -56,10 +56,10 @@ function SessionGate() {
   </Routes></Suspense>;
 }
 
-function BootScreen({ label = 'Finding the local server' }: { label?: string }) {
+function BootScreen({ label = 'Connecting to Overroot' }: { label?: string }) {
   return <div className="boot-screen"><Brand/><LoadingBlock label={label}/></div>;
 }
 
 function OfflineScreen({ message, retry }: { message: string; retry: () => void }) {
-  return <div className="offline-screen"><Brand/><div className="offline-card"><ServerOff size={28}/><div className="eyebrow">Server sleeping</div><h1>Overroot is offline.</h1><p>{message}. The documents remain safely on the host machine.</p><button type="button" className="primary-button" onClick={retry}><RefreshCw size={15}/> Try again</button></div></div>;
+  return <div className="offline-screen"><Brand/><div className="offline-card"><ServerOff size={28}/><div className="eyebrow">Connection unavailable</div><h1>Could not connect to Overroot.</h1><p>{message}. Check your connection and try again.</p><button type="button" className="primary-button" onClick={retry}><RefreshCw size={15}/> Try again</button></div></div>;
 }
