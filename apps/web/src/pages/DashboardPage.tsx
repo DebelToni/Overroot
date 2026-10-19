@@ -64,7 +64,7 @@ export function DashboardPage() {
     <div className="accent-line"/>
     <main className="dashboard-main">
       <section className="dashboard-intro">
-        <div><div className="eyebrow">Your workspace</div><h1>A place for your next paper.</h1><p>Pick up where you left off, or start something new.</p></div>
+        <h1>Projects</h1>
         <div className="dashboard-intro__actions">
           <button className="secondary-button" type="button" onClick={() => importInput.current?.click()} disabled={importing}><Upload size={15}/>{importing ? 'Importing…' : 'Import ZIP'}</button>
           <input ref={importInput} hidden type="file" accept=".zip,application/zip" onChange={(event) => { const file = event.target.files?.[0]; if (file) void importZip(file); event.target.value = ''; }}/>
@@ -73,7 +73,7 @@ export function DashboardPage() {
       </section>
       <InlineError message={error}/>
       <section className="project-section" aria-labelledby="projects-title">
-        <header><h2 id="projects-title">Projects</h2><span>{projects.length.toString().padStart(2, '0')}</span></header>
+        <header><h2 id="projects-title">All projects</h2><span>{projects.length.toString().padStart(2, '0')}</span></header>
         {loading ? <LoadingBlock label="Loading projects"/> : <div className="project-list">
           {projects.length === 0 && <div className="dashboard-empty"><FileArchive size={28}/><h3>No projects yet.</h3><p>Begin with a clean template or import an existing ZIP archive.</p><button className="plain-button" type="button" onClick={() => setNewOpen(true)}>Create your first project <ArrowRight size={14}/></button></div>}
           {projects.map((project) => <button key={project.hash} type="button" className="project-row" onClick={() => navigate(`/project/${project.hash}`)}>

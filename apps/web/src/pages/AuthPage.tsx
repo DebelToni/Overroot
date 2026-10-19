@@ -40,15 +40,14 @@ export function AuthPage({ mode }: { mode: 'login' | 'register' }) {
     <div className="accent-line"/>
     <main className="auth-main">
       <section className="auth-story">
-        <div className="eyebrow">A small place for serious documents</div>
-        <h1>Good ideas deserve<br/>a little space.</h1>
-        <p>Private collaborative LaTeX for you, a friend, and the agents you trust.</p>
+        <h1>Collaborative LaTeX</h1>
+        <p>Write, compile, and share LaTeX projects with people and agents.</p>
         <div className="auth-proof"><span><FileText size={16} aria-hidden="true"/> Live writing</span><span><Layers size={16} aria-hidden="true"/> Modular sources</span><span><Users size={16} aria-hidden="true"/> Shared workspace</span></div>
       </section>
       <section className="auth-panel" aria-labelledby="auth-title">
         <div className="auth-panel__label"><KeyRound size={14} aria-hidden="true"/>{mode === 'login' ? 'Member access' : 'Use invitation'}</div>
-        <h2 id="auth-title">{mode === 'login' ? 'Welcome back.' : 'Create your account.'}</h2>
-        <p>{mode === 'login' ? 'Enter your local Overroot account.' : 'No email or two-factor setup—just a username and password.'}</p>
+        <h2 id="auth-title">{mode === 'login' ? 'Sign in' : 'Create an account'}</h2>
+        <p>{mode === 'login' ? 'Use your Overroot username and password.' : 'An invitation, username, and password are required.'}</p>
         {setupRequired && mode === 'login' && <div className="setup-note"><strong>First-time setup is required.</strong><span>Create the administrator from the local terminal with <code>pnpm admin:create</code>.</span></div>}
         <form onSubmit={submit} className="auth-form">
           {mode === 'register' && <label className="field"><span>Invitation</span><input value={invite} onChange={(event) => setInvite(event.target.value)} required autoComplete="off"/></label>}
