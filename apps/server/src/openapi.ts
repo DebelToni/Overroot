@@ -215,7 +215,10 @@ export const openapi = {
         }
       },
       CompileEnvelope: envelope('job', 'CompileJob'),
-      NullableCompileEnvelope: { type: 'object', required: ['job'], properties: { job: { oneOf: [{ $ref: '#/components/schemas/CompileJob' }, { type: 'null' }] } } },
+      NullableCompileEnvelope: { type: 'object', required: ['job', 'lastSuccessfulJob'], properties: {
+        job: { oneOf: [{ $ref: '#/components/schemas/CompileJob' }, { type: 'null' }] },
+        lastSuccessfulJob: { description: 'Last successful compile for restoring the PDF independently of the latest attempt status.', oneOf: [{ $ref: '#/components/schemas/CompileJob' }, { type: 'null' }] }
+      } },
       SyncTexHighlight: {
         type: 'object', required: ['page', 'x', 'y', 'width', 'height'], properties: {
           page: { type: 'integer', minimum: 1 }, x: { type: 'number' }, y: { type: 'number' },

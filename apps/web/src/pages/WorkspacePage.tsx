@@ -117,7 +117,8 @@ export function WorkspacePage() {
       setJob(compileResponse.job);
       const initial = fileResponse.files.find((file) => file.path === projectResponse.project.entryFile) ?? fileResponse.files[0];
       if (initial) setSelected((await api.getFile(hash, initial.id)).file);
-      if (compileResponse.job?.status === 'succeeded' && compileResponse.job.hasPdf) await loadPdf(compileResponse.job);
+      const previewJob = compileResponse.job?.status === 'succeeded' ? compileResponse.job : compileResponse.lastSuccessfulJob;
+      if (previewJob?.hasPdf) await loadPdf(previewJob);
     } catch (reason) { setError(reason instanceof Error ? reason.message : 'Could not open project'); }
     finally { setLoading(false); }
   }, [api, hash, loadPdf]);
@@ -128,8 +129,9 @@ export function WorkspacePage() {
       setProject(projectResponse.project);
       setJob(compileResponse.job);
       await loadFiles();
-      if (compileResponse.job?.status === 'succeeded' && compileResponse.job.hasPdf && compileResponse.job.sourceHash !== pdfRevision) {
-        await loadPdf(compileResponse.job);
+      const previewJob = compileResponse.job?.status === 'succeeded' ? compileResponse.job : compileResponse.lastSuccessfulJob;
+      if (previewJob?.hasPdf && previewJob.sourceHash !== pdfRevision) {
+        await loadPdf(previewJob);
       }
     } catch (reason) {
       if (reason instanceof ApiError && (reason.status === 403 || reason.status === 404)) navigate('/');
