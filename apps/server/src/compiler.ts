@@ -8,11 +8,8 @@ import type { Database } from './database.js';
 import { HttpError } from './errors.js';
 import type { ProjectStore } from './project-store.js';
 import type { ActorIdentity, ProjectRecord } from './types.js';
-
-interface CompileSource {
-  path: string;
-  content: Buffer;
-}
+import { stageCompileSources, type CompileSource } from './compile-staging.js';
+import { hasPdfSignature } from './compile-artifacts.js';
 
 export interface CompileJob {
   id: string;
@@ -267,21 +264,7 @@ export class Compiler {
     const workDir = join(this.jobsDir, job.id);
     const outputDir = join(workDir, '.overroot-output');
     try {
-      await mkdir(outputDir, { recursive: true });
-      for (const file of sources) {
-        const destination = join(workDir, file.path);
-        if (!isChildPath(workDir, destination)) throw new Error('Unsafe project path');
-        let directory = workDir;
-        for (const part of file.path.split('/').slice(0, -1)) {
-          directory = join(directory, part);
-          await mkdir(directory, { recursive: true });
-          await chmod(directory, 0o755);
-        }
-        await writeFile(destination, file.content);
-        await chmod(destination, 0o644);
-      }
-      await chmod(workDir, 0o755);
-      await chmod(outputDir, 0o777);
+      await stageCompileSources(workDir, sources);
 
       let output: CommandResult;
       if (config.fakeCompiler) {
@@ -331,8 +314,7 @@ export class Compiler {
       const pdfTemp = `${pdfPath}.${job.id}.tmp`;
       const logTemp = `${logPath}.${job.id}.tmp`;
       await copyFile(generatedPdf, pdfTemp);
-      const signature = (await readFile(pdfTemp)).subarray(0, 5).toString();
-      if (signature !== '%PDF-') throw new Error('Compiler produced an invalid PDF');
+      if (!(await hasPdfSignature(pdfTemp))) throw new Error('Compiler produced an invalid PDF');
       await writeFile(logTemp, log, { mode: 0o600 });
       await rename(pdfTemp, pdfPath);
       await rename(logTemp, logPath);
