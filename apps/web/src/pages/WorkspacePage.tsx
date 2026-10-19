@@ -74,7 +74,7 @@ function ProjectWorkspace({ hash }: { hash: string }) {
   const pdfRequest = useRef(0);
   const pdfContext = useRef(api);
   pdfContext.current = api;
-  const pdfArtifact = useRef<{ api: typeof api; projectHash: string; sourceHash: string } | null>(null);
+  const pdfArtifact = useRef<{ api: typeof api; projectHash: string; sourceHash: string; jobId: string; data: ArrayBuffer; validated: boolean } | null>(null);
   const pendingPdf = useRef<{ api: typeof api; projectHash: string; job: CompileJob; promise: Promise<void> } | null>(null);
   const latestPdfJob = useRef<{ api: typeof api; job: CompileJob } | null>(null);
   const currentJob = useRef<CompileJob | null>(null);
@@ -119,14 +119,24 @@ function ProjectWorkspace({ hash }: { hash: string }) {
     } else setSelected(null);
   }, [api, hash, project?.entryFile, selected?.id]);
 
-  const loadPdf = useCallback((nextJob: CompileJob): Promise<void> => {
+  const onPdfDocumentStatus = useCallback((data: ArrayBuffer, status: 'ready' | 'failed') => {
+    const artifact = pdfArtifact.current;
+    if (artifact?.api !== api || pdfContext.current !== api || artifact.data !== data) return;
+    if (status === 'failed') pdfArtifact.current = null;
+    else artifact.validated = true;
+  }, [api]);
+
+  const loadPdf = useCallback((nextJob: CompileJob, cached = false): Promise<void> => {
     if (!nextJob.hasPdf) return Promise.resolve();
     // A delayed reload/reconnect fallback must not replace a newer good preview,
     // even when an even newer compile has since failed.
     if (latestPdfJob.current?.api === api && nextJob.createdAt < latestPdfJob.current.job.createdAt) return Promise.resolve();
     latestPdfJob.current = { api, job: nextJob };
-    if (pdfArtifact.current?.api === api && pdfArtifact.current.projectHash === hash && pdfArtifact.current.sourceHash === nextJob.sourceHash) {
-      // A cache hit creates a new job/SyncTeX endpoint, but its PDF bytes are identical.
+    const artifact = pdfArtifact.current;
+    if (artifact?.api === api && artifact.projectHash === hash && artifact.sourceHash === nextJob.sourceHash &&
+      (artifact.jobId === nextJob.id || (cached && artifact.validated))) {
+      // Only an explicit cache hit can associate validated bytes with another job.
+      artifact.jobId = nextJob.id;
       ++pdfRequest.current;
       pendingPdf.current = null;
       setPdfLoading(false);
@@ -135,11 +145,14 @@ function ProjectWorkspace({ hash }: { hash: string }) {
       return Promise.resolve();
     }
     const pending = pendingPdf.current;
-    if (pending?.api === api && pending.projectHash === hash && pending.job.sourceHash === nextJob.sourceHash) {
+    if (pending?.api === api && pending.projectHash === hash && pending.job.id === nextJob.id) {
       pending.job = nextJob;
       return pending.promise;
     }
     const requestId = ++pdfRequest.current;
+    // A rebuilt artifact can have the same source hash. Keep the old preview on
+    // screen, but do not let it satisfy later cache-hit events during repair.
+    pdfArtifact.current = null;
     const download = { api, projectHash: hash, job: nextJob, promise: Promise.resolve() };
     pendingPdf.current = download;
     setPdfLoading(true);
@@ -148,7 +161,7 @@ function ProjectWorkspace({ hash }: { hash: string }) {
       try {
         const result = await api.compilePdf(hash, nextJob.id);
         if (requestId !== pdfRequest.current || pdfContext.current !== api) return;
-        pdfArtifact.current = { api, projectHash: hash, sourceHash: nextJob.sourceHash };
+        pdfArtifact.current = { api, projectHash: hash, sourceHash: nextJob.sourceHash, jobId: nextJob.id, data: result.data, validated: false };
         setPdf(result.data);
         setPdfRevision(nextJob.sourceHash);
         setPdfJobId(download.job.hasSynctex ? download.job.id : null);
@@ -207,7 +220,7 @@ function ProjectWorkspace({ hash }: { hash: string }) {
     }
     if (event.type.startsWith('compile.') && event.job) {
       const accepted = updateJob(event.job);
-      if (accepted && event.type === 'compile.ready') void loadPdf(event.job);
+      if (accepted && event.type === 'compile.ready') void loadPdf(event.job, event.cached === true);
       if (accepted && event.type === 'compile.failed') setLogOpen(true);
     }
     if (event.type === 'file.created' || event.type === 'file.deleted' || event.type === 'file.renamed') {
@@ -419,7 +432,7 @@ function ProjectWorkspace({ hash }: { hash: string }) {
             : <EditorPane api={api} projectHash={hash} file={selected} user={user} canWrite={project.canWrite} dark={theme.resolved === 'dark'} onPresence={onPresence} onFlushReady={onFlushReady} onCursorChange={onCursorChange}/>}</Suspense>
         </div>
         <div className="split-handle" role="separator" aria-orientation="vertical" onPointerDown={resizeStart}/>
-        <div className="pdf-wrap"><Suspense fallback={<LoadingBlock label="Loading PDF viewer"/>}><PdfViewer key={hash} api={api} projectHash={hash} data={pdf} revision={pdfRevision} synctexJobId={pdfJobId} sourceLocation={sourceLocation} loading={pdfLoading || compiling} focusMode={focusPdf} onFocusMode={setFocusPdf} projectName={project.name}/></Suspense></div>
+        <div className="pdf-wrap"><Suspense fallback={<LoadingBlock label="Loading PDF viewer"/>}><PdfViewer key={hash} api={api} projectHash={hash} data={pdf} revision={pdfRevision} synctexJobId={pdfJobId} sourceLocation={sourceLocation} loading={pdfLoading || compiling} focusMode={focusPdf} onFocusMode={setFocusPdf} projectName={project.name} onDocumentStatus={onPdfDocumentStatus}/></Suspense></div>
       </div>
     </main>
     <footer className="workspace-status">

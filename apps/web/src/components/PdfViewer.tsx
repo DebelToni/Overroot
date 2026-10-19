@@ -21,7 +21,8 @@ export function PdfViewer({
   loading,
   focusMode,
   onFocusMode,
-  projectName
+  projectName,
+  onDocumentStatus
 }: {
   api: ApiClient;
   projectHash: string;
@@ -33,6 +34,7 @@ export function PdfViewer({
   focusMode: boolean;
   onFocusMode: (focused: boolean) => void;
   projectName: string;
+  onDocumentStatus?: (data: ArrayBuffer, status: 'ready' | 'failed') => void;
 }) {
   const scroller = useRef<HTMLDivElement>(null);
   const pages = useRef<HTMLDivElement>(null);
@@ -48,6 +50,8 @@ export function PdfViewer({
   const [rendering, setRendering] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [sourceHighlights, setSourceHighlights] = useState<SyncTexHighlight[]>([]);
+  const documentStatus = useRef(onDocumentStatus);
+  documentStatus.current = onDocumentStatus;
 
   useEffect(() => {
     if (!data || !pages.current) {
@@ -95,6 +99,7 @@ export function PdfViewer({
         await Promise.all(renderJobs);
         if (cancelled) return;
         setRendering(false);
+        documentStatus.current?.(data, 'ready');
         setPage(Math.min(preserved.current.page, pdf.numPages));
         afterLayout(() => {
           if (cancelled) return;
@@ -108,6 +113,7 @@ export function PdfViewer({
         canPersist.current = Boolean(pages.current?.childElementCount);
         setRendering(false);
         setError(reason instanceof Error ? reason.message : 'The PDF could not be displayed');
+        documentStatus.current?.(data, 'failed');
       });
 
     return () => {

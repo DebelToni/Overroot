@@ -7,12 +7,22 @@ import type { CompileJob, ProjectEvent } from '../types';
 const harness = vi.hoisted(() => ({
   api: { getProject: vi.fn(), listFiles: vi.fn(), latestCompile: vi.fn(), getFile: vi.fn(), compilePdf: vi.fn(), compile: vi.fn() },
   flush: vi.fn(),
-  onEvent: null as ((event: Pick<ProjectEvent, 'type' | 'job'> & { reconnected?: boolean }) => void) | null
+  onEvent: null as ((event: Pick<ProjectEvent, 'type' | 'job'> & { reconnected?: boolean; cached?: boolean }) => void) | null,
+  pdfData: null as ArrayBuffer | null,
+  onDocumentStatus: null as ((data: ArrayBuffer, status: 'ready' | 'failed') => void) | null
 }));
 vi.mock('../lib/session', () => ({ useSession: () => ({ api: harness.api, user: { displayName: 'Writer' }, clearSession: vi.fn() }) }));
 vi.mock('../hooks/useTheme', () => ({ useTheme: () => ({ preference: 'light', resolved: 'light', setPreference: vi.fn() }) }));
 vi.mock('../hooks/useProjectEvents', () => ({ useProjectEvents: (_api: unknown, _hash: string, handler: typeof harness.onEvent) => { harness.onEvent = handler; } }));
-vi.mock('../components/PdfViewer', () => ({ PdfViewer: ({ data, revision, synctexJobId }: { data: ArrayBuffer | null; revision: string; synctexJobId: string }) => <div>{data ? `PDF ${revision} SyncTeX ${synctexJobId}` : 'No PDF loaded'}</div> }));
+vi.mock('../components/PdfViewer', async () => {
+  const { useEffect } = await import('react');
+  return { PdfViewer: function Viewer({ data, revision, synctexJobId, onDocumentStatus }: { data: ArrayBuffer | null; revision: string; synctexJobId: string; onDocumentStatus?: typeof harness.onDocumentStatus }) {
+    harness.pdfData = data;
+    harness.onDocumentStatus = onDocumentStatus ?? null;
+    useEffect(() => { if (data) onDocumentStatus?.(data, 'ready'); }, [data, onDocumentStatus]);
+    return <div>{data ? `PDF ${revision} SyncTeX ${synctexJobId}` : 'No PDF loaded'}</div>;
+  } };
+});
 vi.mock('../components/ManuscriptPane', async () => {
   const { useEffect } = await import('react');
   return { ManuscriptPane: function Pane({ onFlushReady }: { onFlushReady: (flush: (() => Promise<void>) | null) => void }) {
@@ -32,6 +42,8 @@ function deferred<T>() {
 }
 beforeEach(() => {
   vi.resetAllMocks();
+  harness.pdfData = null;
+  harness.onDocumentStatus = null;
   harness.flush.mockResolvedValue(undefined);
   harness.api.getProject.mockResolvedValue({ project: { hash: 'project', name: 'Paper', entryFile: 'main.tex', role: 'owner', canWrite: true, canManage: true, memberCount: 1 } });
   harness.api.listFiles.mockResolvedValue({ files: [] });
@@ -74,18 +86,22 @@ it('shares one PDF download when readiness arrives before the compile response',
   await screen.findByText('PDF good-revision SyncTeX good-job');
 });
 
-it('reuses displayed bytes for an unchanged compile and updates its SyncTeX job', async () => {
+it('reuses validated bytes for a confirmed cache hit and updates its SyncTeX job', async () => {
   harness.api.latestCompile.mockResolvedValue({ job: successful });
   openWorkspace();
   await screen.findByText('PDF good-revision SyncTeX good-job');
   const cached = { ...successful, id: 'cached-job', createdAt: '2026-10-19T10:00:02.000Z' };
-  harness.api.compile.mockResolvedValue({ job: cached });
+  const response = deferred<{ job: CompileJob }>();
+  harness.api.compile.mockReturnValue(response.promise);
   fireEvent.click(screen.getByRole('button', { name: /^Compile$/ }));
+  await waitFor(() => expect(harness.api.compile).toHaveBeenCalledTimes(1));
+  await act(async () => { harness.onEvent!({ type: 'compile.ready', job: cached, cached: true }); });
+  await act(async () => { response.resolve({ job: cached }); });
   await screen.findByText('PDF good-revision SyncTeX cached-job');
   expect(harness.api.compilePdf).toHaveBeenCalledTimes(1);
 });
 
-it('refreshes the SyncTeX binding after reconnecting to an unchanged cached PDF', async () => {
+it('fetches a new job after reconnecting without cache provenance and deduplicates its next snapshot', async () => {
   harness.api.latestCompile.mockResolvedValue({ job: successful });
   openWorkspace();
   await screen.findByText('PDF good-revision SyncTeX good-job');
@@ -93,7 +109,60 @@ it('refreshes the SyncTeX binding after reconnecting to an unchanged cached PDF'
   harness.api.latestCompile.mockResolvedValue({ job: cached });
   await act(async () => { harness.onEvent!({ type: 'connected', reconnected: true }); });
   await screen.findByText('PDF good-revision SyncTeX reconnected-job');
-  expect(harness.api.compilePdf).toHaveBeenCalledTimes(1);
+  expect(harness.api.compilePdf).toHaveBeenCalledTimes(2);
+  await act(async () => { harness.onEvent!({ type: 'connected', reconnected: true }); });
+  expect(harness.api.compilePdf).toHaveBeenCalledTimes(2);
+});
+
+it('replaces rejected downloaded bytes after an uncached repair with the same source hash', async () => {
+  const invalid = new Uint8Array([0]).buffer;
+  const repaired = new Uint8Array([1, 2]).buffer;
+  harness.api.latestCompile.mockResolvedValue({ job: successful });
+  harness.api.compilePdf.mockResolvedValueOnce({ data: invalid }).mockResolvedValue({ data: repaired });
+  openWorkspace();
+  await screen.findByText('PDF good-revision SyncTeX good-job');
+  // A successful HTTP response can still be rejected by the PDF parser.
+  act(() => { harness.onDocumentStatus?.(invalid, 'failed'); });
+  const repair = { ...successful, id: 'repaired-job', createdAt: '2026-10-19T10:00:02.000Z' };
+  await act(async () => { harness.onEvent!({ type: 'compile.ready', job: repair, cached: false }); });
+  expect(harness.api.compilePdf).toHaveBeenCalledTimes(2);
+  expect(harness.api.compilePdf).toHaveBeenLastCalledWith('project', 'repaired-job');
+  expect(harness.pdfData).toBe(repaired);
+});
+
+it('supersedes an older pending same-hash download when an uncached repair is published', async () => {
+  const oldDownload = deferred<{ data: ArrayBuffer }>();
+  const repaired = new Uint8Array([1, 2]).buffer;
+  openWorkspace();
+  await screen.findByText('Test manuscript');
+  harness.api.compilePdf.mockReturnValueOnce(oldDownload.promise).mockResolvedValue({ data: repaired });
+  act(() => { harness.onEvent!({ type: 'compile.ready', job: successful, cached: false }); });
+  const repair = { ...successful, id: 'repaired-job', createdAt: '2026-10-19T10:00:02.000Z' };
+  await act(async () => { harness.onEvent!({ type: 'compile.ready', job: repair, cached: false }); });
+  expect(harness.api.compilePdf).toHaveBeenCalledTimes(2);
+  expect(harness.pdfData).toBe(repaired);
+  await act(async () => { oldDownload.resolve({ data: new ArrayBuffer(1) }); });
+  expect(harness.pdfData).toBe(repaired);
+  expect(screen.getByText('PDF good-revision SyncTeX repaired-job')).toBeInTheDocument();
+});
+
+it('invalidates only bytes rejected by the current viewer and retries even on a confirmed cache hit', async () => {
+  const invalid = new Uint8Array([0]).buffer;
+  const repaired = new Uint8Array([1, 2]).buffer;
+  harness.api.latestCompile.mockResolvedValue({ job: successful });
+  harness.api.compilePdf.mockResolvedValueOnce({ data: invalid }).mockResolvedValue({ data: repaired });
+  openWorkspace();
+  await screen.findByText('PDF good-revision SyncTeX good-job');
+  act(() => { harness.onDocumentStatus?.(invalid, 'failed'); });
+  const repair = { ...successful, id: 'repaired-job', createdAt: '2026-10-19T10:00:02.000Z' };
+  await act(async () => { harness.onEvent!({ type: 'compile.ready', job: repair, cached: true }); });
+  expect(harness.api.compilePdf).toHaveBeenCalledTimes(2);
+  expect(harness.pdfData).toBe(repaired);
+  act(() => { harness.onDocumentStatus?.(invalid, 'failed'); });
+  const cached = { ...repair, id: 'cached-job', createdAt: '2026-10-19T10:00:03.000Z' };
+  await act(async () => { harness.onEvent!({ type: 'compile.ready', job: cached, cached: true }); });
+  expect(harness.api.compilePdf).toHaveBeenCalledTimes(2);
+  expect(screen.getByText('PDF good-revision SyncTeX cached-job')).toBeInTheDocument();
 });
 
 it('keeps a completed compile when its queued POST response arrives late', async () => {
