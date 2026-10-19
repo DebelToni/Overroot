@@ -231,14 +231,25 @@ export class ProjectStore {
     this.db.run('UPDATE projects SET entry_file = ?, updated_at = ? WHERE id = ?', path, new Date().toISOString(), projectId);
   }
 
-  sourceHash(projectId: string, context: string[] = []): string {
+  compileFileMetadata(projectId: string): Array<Pick<FileRecord, 'path' | 'kind' | 'revision_hash'> & { byte_length: number }> {
+    return this.db.all(
+      'SELECT path, kind, revision_hash, length(content) AS byte_length FROM files WHERE project_id = ? ORDER BY path COLLATE NOCASE',
+      projectId
+    );
+  }
+
+  compileSources(projectId: string): Array<Pick<FileRecord, 'path' | 'content'>> {
+    return this.db.all('SELECT path, content FROM files WHERE project_id = ? ORDER BY path COLLATE NOCASE', projectId);
+  }
+
+  sourceHash(projectId: string, context: string[] = [], files: ReadonlyArray<Pick<FileRecord, 'path' | 'revision_hash'>> = this.compileFileMetadata(projectId)): string {
     const hash = createHash('sha256');
     hash.update('overroot-compile-cache-v2\0');
     for (const value of context) {
       hash.update(value);
       hash.update('\0');
     }
-    for (const file of this.listFiles(projectId)) {
+    for (const file of files) {
       hash.update(file.path);
       hash.update('\0');
       hash.update(file.revision_hash);

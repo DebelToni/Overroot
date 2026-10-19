@@ -36,6 +36,11 @@ export class Compiler {
   private queue: Promise<void> = Promise.resolve();
   private workerReady: Promise<void> | null = null;
   private closing = false;
+  private readonly pendingRequests = new Map<string, Promise<CompileJob>>();
+  private snapshotJobs = 0;
+  private snapshotBytes = 0;
+  private readonly maxJobs = config.compileMaxJobs;
+  private readonly maxSnapshotBytes = config.compileMaxSnapshotBytes;
   private readonly jobsDir: string;
   private readonly cacheDir: string;
 
@@ -46,6 +51,9 @@ export class Compiler {
     private readonly events: EventHub,
     dataDir = config.dataDir
   ) {
+    if (!Number.isSafeInteger(this.maxJobs) || this.maxJobs < 1 || !Number.isSafeInteger(this.maxSnapshotBytes) || this.maxSnapshotBytes < 1) {
+      throw new Error('Compiler queue limits must be positive safe integers');
+    }
     this.jobsDir = join(dataDir, 'jobs');
     this.cacheDir = join(dataDir, 'compile-cache');
   }
@@ -65,17 +73,16 @@ export class Compiler {
   async request(project: ProjectRecord, actor: ActorIdentity): Promise<CompileJob> {
     if (this.closing) throw new HttpError(503, 'The compiler is shutting down', 'compiler_unavailable');
     await this.collaboration.flushProject(project.id);
+    if (this.closing) throw new HttpError(503, 'The compiler is shutting down', 'compiler_unavailable');
     project = { ...project };
-    const entry = this.store.getFile(project.id, project.entry_file);
+    const metadata = this.store.compileFileMetadata(project.id);
+    const entry = metadata.find(file => file.path === project.entry_file);
     if (!entry || entry.kind !== 'text') throw new HttpError(400, 'The project entry file does not exist', 'entry_file_missing');
     const sourceHash = this.store.sourceHash(project.id, [
       project.entry_file,
       config.fakeCompiler ? 'fake-compiler-v1' : config.dockerImage,
       'tectonic-v3:untrusted:synctex:snapshot'
-    ]);
-    // Hash and copy in the same synchronous turn, before cache I/O or queue waits.
-    // Later edits, renames and deletions must not change this job's inputs.
-    const sources = this.store.listFiles(project.id).map(file => ({ path: file.path, content: Buffer.from(file.content) }));
+    ], metadata);
     const inFlight = this.db.get<CompileJob>(
       `SELECT * FROM compile_jobs
        WHERE project_id = ? AND source_hash = ? AND status IN ('queued', 'compiling')
@@ -85,40 +92,83 @@ export class Compiler {
     );
     if (inFlight) return inFlight;
 
-    const cachedPdf = join(this.cacheDir, `${sourceHash}.pdf`);
-    const cachedLog = join(this.cacheDir, `${sourceHash}.log`);
-    if (await fileExists(cachedPdf)) {
-      const cachedSynctex = join(this.cacheDir, `${sourceHash}.synctex.gz`);
-      const synctexPath = await fileExists(cachedSynctex) ? cachedSynctex : null;
-      const now = new Date().toISOString();
-      const job = this.insertJob(project, sourceHash, actor, 'succeeded', now, now, cachedPdf, await readOptional(cachedLog), null, synctexPath);
-      this.events.emit(project.id, { type: 'compile.ready', job: publicCompileJob(job), cached: true });
-      return job;
-    }
-
-    let job: CompileJob;
+    const key = `${project.id}:${sourceHash}`;
+    const pending = this.pendingRequests.get(key);
+    if (pending) return pending;
+    const bytes = metadata.reduce((total, file) => total + file.byte_length, 0);
+    const requested = this.admit(project, actor, sourceHash, bytes);
+    this.pendingRequests.set(key, requested);
     try {
-      job = this.insertJob(project, sourceHash, actor, 'queued');
-    } catch (error) {
-      const concurrent = this.db.get<CompileJob>(
-        `SELECT * FROM compile_jobs
-         WHERE project_id = ? AND source_hash = ? AND status IN ('queued', 'compiling')
-         ORDER BY created_at DESC LIMIT 1`,
-        project.id,
-        sourceHash
-      );
-      if (concurrent) return concurrent;
-      throw error;
+      return await requested;
+    } finally {
+      this.pendingRequests.delete(key);
     }
-    this.events.emit(project.id, { type: 'compile.queued', job: publicCompileJob(job) });
-    this.queue = this.queue.then(() => this.run(job, project, sources)).catch((error) => {
-      console.error('[compile queue]', error);
-    });
-    return job;
+  }
+
+  private async admit(project: ProjectRecord, actor: ActorIdentity, sourceHash: string, bytes: number): Promise<CompileJob> {
+    if (!Number.isSafeInteger(bytes) || bytes > this.maxSnapshotBytes) {
+      throw new HttpError(413, 'Project sources exceed the compiler snapshot size limit', 'compile_snapshot_too_large');
+    }
+    if (this.snapshotJobs >= this.maxJobs || this.snapshotBytes + bytes > this.maxSnapshotBytes) {
+      throw new HttpError(429, 'The compilation queue is full. Try again after a pending job finishes.', 'compile_queue_full');
+    }
+    this.snapshotJobs += 1;
+    this.snapshotBytes += bytes;
+    const sources: CompileSource[] = [];
+    let queued = false;
+    const release = () => {
+      sources.length = 0;
+      this.snapshotJobs -= 1;
+      this.snapshotBytes -= bytes;
+    };
+    try {
+      // Admission, hash and snapshot copying share a synchronous turn, before
+      // cache I/O. Rejected jobs never read source/asset blobs into memory.
+      for (const file of this.store.compileSources(project.id)) {
+        sources.push({ path: file.path, content: Buffer.from(file.content) });
+      }
+
+      const cachedPdf = join(this.cacheDir, `${sourceHash}.pdf`);
+      const cachedLog = join(this.cacheDir, `${sourceHash}.log`);
+      if (await fileExists(cachedPdf)) {
+        const cachedSynctex = join(this.cacheDir, `${sourceHash}.synctex.gz`);
+        const synctexPath = await fileExists(cachedSynctex) ? cachedSynctex : null;
+        const now = new Date().toISOString();
+        const job = this.insertJob(project, sourceHash, actor, 'succeeded', now, now, cachedPdf, await readOptional(cachedLog), null, synctexPath);
+        this.events.emit(project.id, { type: 'compile.ready', job: publicCompileJob(job), cached: true });
+        return job;
+      }
+
+      if (this.closing) throw new HttpError(503, 'The compiler is shutting down', 'compiler_unavailable');
+
+      let job: CompileJob;
+      try {
+        job = this.insertJob(project, sourceHash, actor, 'queued');
+      } catch (error) {
+        const concurrent = this.db.get<CompileJob>(
+          `SELECT * FROM compile_jobs
+           WHERE project_id = ? AND source_hash = ? AND status IN ('queued', 'compiling')
+           ORDER BY created_at DESC LIMIT 1`,
+          project.id,
+          sourceHash
+        );
+        if (concurrent) return concurrent;
+        throw error;
+      }
+      this.events.emit(project.id, { type: 'compile.queued', job: publicCompileJob(job) });
+      this.queue = this.queue.then(() => this.run(job, project, sources)).finally(release).catch((error) => {
+        console.error('[compile queue]', error);
+      });
+      queued = true;
+      return job;
+    } finally {
+      if (!queued) release();
+    }
   }
 
   async close(): Promise<void> {
     this.closing = true;
+    await Promise.allSettled([...this.pendingRequests.values()]);
     await this.queue;
     this.db.run(
       "UPDATE compile_jobs SET status = 'cancelled', error = 'Server stopped before compilation', finished_at = ? WHERE status IN ('queued', 'compiling')",

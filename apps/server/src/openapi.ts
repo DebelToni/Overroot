@@ -107,7 +107,9 @@ export const openapi = {
         responses: {
           '200': response('Cached result', 'CompileEnvelope'),
           '202': response('Compile queued', 'CompileEnvelope'),
-          '400': error('Entry file missing')
+          '400': error('Entry file missing'),
+          '413': error('Project exceeds the compiler snapshot byte limit'),
+          '429': error('Compiler queue capacity is full; retry after a pending job finishes')
         }
       }
     },
