@@ -175,31 +175,31 @@ export function editorTheme(dark: boolean) {
     {
       '&': {
         height: '100%',
-        color: dark ? '#ececef' : '#242529',
-        backgroundColor: dark ? '#111214' : '#ffffff',
-        fontSize: '13px'
+        color: 'var(--ink-2)',
+        backgroundColor: 'var(--paper)',
+        fontSize: '14px'
       },
       '.cm-scroller': {
         fontFamily: 'var(--mono)',
         lineHeight: '1.65',
         overflow: 'auto'
       },
-      '.cm-content': { padding: '20px 0 80px', caretColor: '#5e6ad2' },
-      '.cm-line': { padding: '0 20px 0 8px' },
+      '.cm-content': { padding: '22px 0 80px', caretColor: 'var(--accent)' },
+      '.cm-line': { padding: '0 24px 0 12px' },
       '.cm-gutters': {
-        backgroundColor: dark ? '#111214' : '#ffffff',
-        color: dark ? '#555861' : '#b0b2b8',
+        backgroundColor: 'var(--paper)',
+        color: 'var(--faint)',
         border: '0',
-        paddingTop: '20px'
+        paddingTop: '22px'
       },
-      '.cm-activeLine, .cm-activeLineGutter': { backgroundColor: dark ? '#191a1d' : '#f7f7f8' },
-      '.cm-selectionBackground, &.cm-focused .cm-selectionBackground, ::selection': { backgroundColor: '#5e6ad233 !important' },
+      '.cm-activeLine, .cm-activeLineGutter': { backgroundColor: 'var(--surface)' },
+      '.cm-selectionBackground, &.cm-focused .cm-selectionBackground, ::selection': { backgroundColor: 'color-mix(in srgb, var(--accent) 22%, transparent) !important' },
       '&.cm-focused': { outline: 'none' },
-      '.cm-cursor, .cm-dropCursor': { borderLeftColor: '#5e6ad2' },
+      '.cm-cursor, .cm-dropCursor': { borderLeftColor: 'var(--accent)' },
       '.cm-tooltip': {
-        backgroundColor: dark ? '#191a1d' : '#ffffff',
-        border: `1px solid ${dark ? '#303238' : '#e7e8eb'}`,
-        borderRadius: '2px'
+        backgroundColor: 'var(--paper)',
+        border: '1px solid var(--line)',
+        borderRadius: '7px'
       }
     },
     { dark }
