@@ -170,7 +170,7 @@ export function editorHistoryKeymap(collaborative: boolean) {
   return collaborative ? yUndoManagerKeymap : historyKeymap;
 }
 
-function editorTheme(dark: boolean) {
+export function editorTheme(dark: boolean) {
   return EditorView.theme(
     {
       '&': {
