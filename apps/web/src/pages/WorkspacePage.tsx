@@ -293,10 +293,10 @@ export function WorkspacePage() {
       <div className="presence-stack" aria-label="Active collaborators">{presence.slice(0, 4).map((person) => <span key={person.clientId} className="presence-avatar" style={{ '--person-color': person.color } as React.CSSProperties} title={person.name}>{initials(person.name)}</span>)}{presence.length > 4 && <span className="presence-more">+{presence.length - 4}</span>}</div>
       {activity && <div className="live-activity"><Bot size={13}/>{activity}</div>}
       <div className="workspace-actions">
-        <button className="plain-button workspace-action-text" type="button" onClick={() => setHistoryOpen(true)}><History size={14}/> History</button>
+        <button className="plain-button workspace-action-text" type="button" aria-label="History" title="History" onClick={() => setHistoryOpen(true)}><History size={14}/> History</button>
         <button className="icon-button" type="button" onClick={() => void exportZip()} aria-label="Export project ZIP" title="Export ZIP"><Download size={15}/></button>
-        <button className="plain-button workspace-action-text" type="button" onClick={() => setShareOpen(true)}><Users size={14}/> Share</button>
-        {project.canManage && <button className="plain-button workspace-action-text" type="button" onClick={() => setAgentOpen(true)}><Braces size={14}/> Agents</button>}
+        <button className="plain-button workspace-action-text" type="button" aria-label="Share" title="Share" onClick={() => setShareOpen(true)}><Users size={14}/> Share</button>
+        {project.canManage && <button className="plain-button workspace-action-text" type="button" aria-label="Agents" title="Agents" onClick={() => setAgentOpen(true)}><Braces size={14}/> Agents</button>}
         {project.canManage && <button className="icon-button" type="button" onClick={() => setSettingsOpen(true)} aria-label="Project settings"><Settings2 size={15}/></button>}
         <ThemeControl value={theme.preference} onChange={theme.setPreference}/>
         <button className="compile-button" type="button" disabled={!project.canWrite || compiling} onClick={() => void compile()}><Play size={14} fill="currentColor"/>{compiling ? 'Compiling…' : 'Compile'}</button>
@@ -311,15 +311,17 @@ export function WorkspacePage() {
       <button role="tab" aria-selected={mobilePane === 'pdf'} onClick={() => setMobilePane('pdf')}><FileText size={14}/> PDF</button>
     </div>
     <main className="workspace-body">
-      <button className="tree-toggle" type="button" onClick={toggleTree} aria-label={treeOpen ? 'Hide file tree' : 'Show file tree'}>{treeOpen ? <PanelLeftClose size={15}/> : <PanelLeftOpen size={15}/>}</button>
       <div className={`workspace-tree-wrap ${treeOpen ? '' : 'is-collapsed'}`}>
         <FileTree files={files} selectedId={selected?.id ?? null} entryFile={project.entryFile} canWrite={project.canWrite} onSelect={(file) => void selectFile(file)} onCreate={() => setNewFileOpen(true)} onUpload={(items) => void uploadFiles(items)} onFileMenu={setFileActions}/>
       </div>
       <div ref={workspaceRef} className="editor-pdf" style={{ '--editor-percent': `${editorPercent}%` } as React.CSSProperties}>
         <div className="editor-wrap">
-          <div className="editor-mode" role="group" aria-label="Source view">
+          <div className="editor-mode">
+            <button className="tree-toggle" type="button" onClick={toggleTree} aria-expanded={treeOpen} aria-label={treeOpen ? 'Hide file tree' : 'Show file tree'} title={treeOpen ? 'Hide file tree' : 'Show file tree'}>{treeOpen ? <PanelLeftClose size={16}/> : <PanelLeftOpen size={16}/>}</button>
+            <div className="source-switch" role="group" aria-label="Source view">
             <button type="button" aria-pressed={editorMode === 'manuscript'} onClick={() => void switchEditorMode('manuscript')}>Manuscript</button>
             <button type="button" aria-pressed={editorMode === 'files'} onClick={() => void switchEditorMode('files')}>Files</button>
+            </div>
           </div>
           <Suspense fallback={<LoadingBlock label="Loading editor"/>}>{editorMode === 'manuscript'
             ? <ManuscriptPane api={api} projectHash={hash} entryFile={project.entryFile} files={files} user={user} canWrite={project.canWrite} dark={theme.resolved === 'dark'} refreshKey={historyKey} onPresence={onPresence} onFlushReady={onFlushReady} onCursorChange={onCursorChange}/>
