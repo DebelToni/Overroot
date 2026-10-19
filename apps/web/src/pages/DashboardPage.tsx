@@ -6,7 +6,7 @@ import { AccountDialog, NewProjectDialog, InvitesDialog } from '../components/Da
 import { InlineError, LoadingBlock } from '../components/Feedback';
 import { ThemeControl } from '../components/ThemeControl';
 import { useTheme } from '../hooks/useTheme';
-import { relativeTime } from '../lib/format';
+import { initials, relativeTime } from '../lib/format';
 import { useSession } from '../lib/session';
 import type { ProjectSummary, Template } from '../types';
 
@@ -56,8 +56,8 @@ export function DashboardPage() {
       <Brand subtitle="Collaborative LaTeX studio"/>
       <div className="dashboard-head__actions">
         <ThemeControl value={theme.preference} onChange={theme.setPreference}/>
-        {user?.isAdmin && <button className="plain-button admin-invites-button" type="button" onClick={() => setInvitesOpen(true)}><Settings2 size={14}/><span>Invitations</span></button>}
-        <button type="button" className="user-chip" onClick={() => setAccountOpen(true)}><b>{user?.displayName}</b><small>{user?.isAdmin ? 'Admin' : 'Member'}</small></button>
+        {user?.isAdmin && <button className="plain-button admin-invites-button" type="button" aria-label="Invitations" title="Invitations" onClick={() => setInvitesOpen(true)}><Settings2 size={14}/><span>Invitations</span></button>}
+        <button type="button" className="user-chip" aria-label={`Account settings for ${user?.displayName}`} onClick={() => setAccountOpen(true)}><span className="user-chip__details"><b>{user?.displayName}</b><small>{user?.isAdmin ? 'Admin' : 'Member'}</small></span><span className="user-chip__initials" aria-hidden="true">{initials(user?.displayName ?? '')}</span></button>
         <button className="icon-button" type="button" onClick={() => void logout()} aria-label="Log out" title="Log out"><LogOut size={16}/></button>
       </div>
     </header>
