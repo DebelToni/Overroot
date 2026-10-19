@@ -107,7 +107,9 @@ export const openapi = {
         responses: {
           '200': response('Cached result', 'CompileEnvelope'),
           '202': response('Compile queued', 'CompileEnvelope'),
-          '400': error('Entry file missing')
+          '400': error('Entry file missing'),
+          '413': error('Project exceeds the compiler snapshot byte limit'),
+          '429': error('Compiler queue capacity is full; retry after a pending job finishes')
         }
       }
     },
@@ -215,7 +217,10 @@ export const openapi = {
         }
       },
       CompileEnvelope: envelope('job', 'CompileJob'),
-      NullableCompileEnvelope: { type: 'object', required: ['job'], properties: { job: { oneOf: [{ $ref: '#/components/schemas/CompileJob' }, { type: 'null' }] } } },
+      NullableCompileEnvelope: { type: 'object', required: ['job', 'lastSuccessfulJob'], properties: {
+        job: { oneOf: [{ $ref: '#/components/schemas/CompileJob' }, { type: 'null' }] },
+        lastSuccessfulJob: { description: 'Last successful compile for restoring the PDF independently of the latest attempt status.', oneOf: [{ $ref: '#/components/schemas/CompileJob' }, { type: 'null' }] }
+      } },
       SyncTexHighlight: {
         type: 'object', required: ['page', 'x', 'y', 'width', 'height'], properties: {
           page: { type: 'integer', minimum: 1 }, x: { type: 'number' }, y: { type: 'number' },

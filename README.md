@@ -141,6 +141,8 @@ The first real compile builds `overroot-tectonic:0.16.9` if necessary and starts
 
 The cache key includes the entry file, compiler context, flags, paths, and every source revision. An identical project state reuses its existing PDF immediately.
 
+Compile admission is bounded across all projects: at most eight admitted jobs (including the running job and cache lookups) and 128 MiB of retained source/asset snapshot bytes. Limits are checked from file metadata before reading source blobs; identical pending requests share one admission. A full queue returns HTTP 429 (`compile_queue_full`); a project exceeding the byte limit returns HTTP 413 (`compile_snapshot_too_large`). Reservations and source buffers are released after completion, failure, or an early return. Administrators can change the positive integer limits with `OVERROOT_COMPILE_MAX_JOBS` and `OVERROOT_COMPILE_MAX_SNAPSHOT_BYTES`; the byte limit bounds retained snapshot contents, not the entire Node process heap or temporary database reads.
+
 ## Data and backups
 
 SQLite and generated runtime data live outside the source repository. Backup location, retention, and restore details are documented in [`deploy/README.md`](deploy/README.md).

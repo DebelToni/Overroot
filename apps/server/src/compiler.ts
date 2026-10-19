@@ -1,6 +1,6 @@
 import { randomUUID } from 'node:crypto';
 import { chmod, copyFile, mkdir, readFile, realpath, rename, rm, stat, writeFile } from 'node:fs/promises';
-import { basename, extname, join, relative, resolve } from 'node:path';
+import { basename, extname, isAbsolute, join, relative, resolve, sep } from 'node:path';
 import { spawn } from 'node:child_process';
 import { config, repoRoot } from './config.js';
 import type { CollaborationManager, EventHub } from './collaboration.js';
@@ -8,6 +8,11 @@ import type { Database } from './database.js';
 import { HttpError } from './errors.js';
 import type { ProjectStore } from './project-store.js';
 import type { ActorIdentity, ProjectRecord } from './types.js';
+
+interface CompileSource {
+  path: string;
+  content: Buffer;
+}
 
 export interface CompileJob {
   id: string;
@@ -31,6 +36,11 @@ export class Compiler {
   private queue: Promise<void> = Promise.resolve();
   private workerReady: Promise<void> | null = null;
   private closing = false;
+  private readonly pendingRequests = new Map<string, Promise<CompileJob>>();
+  private snapshotJobs = 0;
+  private snapshotBytes = 0;
+  private readonly maxJobs = config.compileMaxJobs;
+  private readonly maxSnapshotBytes = config.compileMaxSnapshotBytes;
   private readonly jobsDir: string;
   private readonly cacheDir: string;
 
@@ -41,6 +51,9 @@ export class Compiler {
     private readonly events: EventHub,
     dataDir = config.dataDir
   ) {
+    if (!Number.isSafeInteger(this.maxJobs) || this.maxJobs < 1 || !Number.isSafeInteger(this.maxSnapshotBytes) || this.maxSnapshotBytes < 1) {
+      throw new Error('Compiler queue limits must be positive safe integers');
+    }
     this.jobsDir = join(dataDir, 'jobs');
     this.cacheDir = join(dataDir, 'compile-cache');
   }
@@ -60,13 +73,16 @@ export class Compiler {
   async request(project: ProjectRecord, actor: ActorIdentity): Promise<CompileJob> {
     if (this.closing) throw new HttpError(503, 'The compiler is shutting down', 'compiler_unavailable');
     await this.collaboration.flushProject(project.id);
-    const entry = this.store.getFile(project.id, project.entry_file);
+    if (this.closing) throw new HttpError(503, 'The compiler is shutting down', 'compiler_unavailable');
+    project = { ...project };
+    const metadata = this.store.compileFileMetadata(project.id);
+    const entry = metadata.find(file => file.path === project.entry_file);
     if (!entry || entry.kind !== 'text') throw new HttpError(400, 'The project entry file does not exist', 'entry_file_missing');
     const sourceHash = this.store.sourceHash(project.id, [
       project.entry_file,
       config.fakeCompiler ? 'fake-compiler-v1' : config.dockerImage,
-      'tectonic-v2:untrusted:synctex'
-    ]);
+      'tectonic-v3:untrusted:synctex:snapshot'
+    ], metadata);
     const inFlight = this.db.get<CompileJob>(
       `SELECT * FROM compile_jobs
        WHERE project_id = ? AND source_hash = ? AND status IN ('queued', 'compiling')
@@ -76,38 +92,83 @@ export class Compiler {
     );
     if (inFlight) return inFlight;
 
-    const cachedPdf = join(this.cacheDir, `${sourceHash}.pdf`);
-    const cachedLog = join(this.cacheDir, `${sourceHash}.log`);
-    if (await fileExists(cachedPdf)) {
-      const now = new Date().toISOString();
-      const job = this.insertJob(project, sourceHash, actor, 'succeeded', now, now, cachedPdf, await readOptional(cachedLog), null);
-      this.events.emit(project.id, { type: 'compile.ready', job: publicCompileJob(job), cached: true });
-      return job;
-    }
-
-    let job: CompileJob;
+    const key = `${project.id}:${sourceHash}`;
+    const pending = this.pendingRequests.get(key);
+    if (pending) return pending;
+    const bytes = metadata.reduce((total, file) => total + file.byte_length, 0);
+    const requested = this.admit(project, actor, sourceHash, bytes);
+    this.pendingRequests.set(key, requested);
     try {
-      job = this.insertJob(project, sourceHash, actor, 'queued');
-    } catch (error) {
-      const concurrent = this.db.get<CompileJob>(
-        `SELECT * FROM compile_jobs
-         WHERE project_id = ? AND source_hash = ? AND status IN ('queued', 'compiling')
-         ORDER BY created_at DESC LIMIT 1`,
-        project.id,
-        sourceHash
-      );
-      if (concurrent) return concurrent;
-      throw error;
+      return await requested;
+    } finally {
+      this.pendingRequests.delete(key);
     }
-    this.events.emit(project.id, { type: 'compile.queued', job: publicCompileJob(job) });
-    this.queue = this.queue.then(() => this.run(job, project)).catch((error) => {
-      console.error('[compile queue]', error);
-    });
-    return job;
+  }
+
+  private async admit(project: ProjectRecord, actor: ActorIdentity, sourceHash: string, bytes: number): Promise<CompileJob> {
+    if (!Number.isSafeInteger(bytes) || bytes > this.maxSnapshotBytes) {
+      throw new HttpError(413, 'Project sources exceed the compiler snapshot size limit', 'compile_snapshot_too_large');
+    }
+    if (this.snapshotJobs >= this.maxJobs || this.snapshotBytes + bytes > this.maxSnapshotBytes) {
+      throw new HttpError(429, 'The compilation queue is full. Try again after a pending job finishes.', 'compile_queue_full');
+    }
+    this.snapshotJobs += 1;
+    this.snapshotBytes += bytes;
+    const sources: CompileSource[] = [];
+    let queued = false;
+    const release = () => {
+      sources.length = 0;
+      this.snapshotJobs -= 1;
+      this.snapshotBytes -= bytes;
+    };
+    try {
+      // Admission, hash and snapshot copying share a synchronous turn, before
+      // cache I/O. Rejected jobs never read source/asset blobs into memory.
+      for (const file of this.store.compileSources(project.id)) {
+        sources.push({ path: file.path, content: Buffer.from(file.content) });
+      }
+
+      const cachedPdf = join(this.cacheDir, `${sourceHash}.pdf`);
+      const cachedLog = join(this.cacheDir, `${sourceHash}.log`);
+      if (await fileExists(cachedPdf)) {
+        const cachedSynctex = join(this.cacheDir, `${sourceHash}.synctex.gz`);
+        const synctexPath = await fileExists(cachedSynctex) ? cachedSynctex : null;
+        const now = new Date().toISOString();
+        const job = this.insertJob(project, sourceHash, actor, 'succeeded', now, now, cachedPdf, await readOptional(cachedLog), null, synctexPath);
+        this.events.emit(project.id, { type: 'compile.ready', job: publicCompileJob(job), cached: true });
+        return job;
+      }
+
+      if (this.closing) throw new HttpError(503, 'The compiler is shutting down', 'compiler_unavailable');
+
+      let job: CompileJob;
+      try {
+        job = this.insertJob(project, sourceHash, actor, 'queued');
+      } catch (error) {
+        const concurrent = this.db.get<CompileJob>(
+          `SELECT * FROM compile_jobs
+           WHERE project_id = ? AND source_hash = ? AND status IN ('queued', 'compiling')
+           ORDER BY created_at DESC LIMIT 1`,
+          project.id,
+          sourceHash
+        );
+        if (concurrent) return concurrent;
+        throw error;
+      }
+      this.events.emit(project.id, { type: 'compile.queued', job: publicCompileJob(job) });
+      this.queue = this.queue.then(() => this.run(job, project, sources)).finally(release).catch((error) => {
+        console.error('[compile queue]', error);
+      });
+      queued = true;
+      return job;
+    } finally {
+      if (!queued) release();
+    }
   }
 
   async close(): Promise<void> {
     this.closing = true;
+    await Promise.allSettled([...this.pendingRequests.values()]);
     await this.queue;
     this.db.run(
       "UPDATE compile_jobs SET status = 'cancelled', error = 'Server stopped before compilation', finished_at = ? WHERE status IN ('queued', 'compiling')",
@@ -141,8 +202,7 @@ export class Compiler {
     const path = type === 'pdf' ? job.pdf_path : job.synctex_path;
     if (!path) throw new HttpError(404, `${type.toUpperCase()} artifact not found`, 'artifact_not_found');
     const resolved = resolve(path);
-    const allowed = `${resolve(this.cacheDir)}/`;
-    if (!resolved.startsWith(allowed)) throw new HttpError(404, 'Artifact not found', 'artifact_not_found');
+    if (!isChildPath(this.cacheDir, resolved)) throw new HttpError(404, 'Artifact not found', 'artifact_not_found');
     return resolved;
   }
 
@@ -155,7 +215,8 @@ export class Compiler {
     finishedAt: string | null = null,
     pdfPath: string | null = null,
     log = '',
-    error: string | null = null
+    error: string | null = null,
+    synctexPath: string | null = null
   ): CompileJob {
     const job: CompileJob = {
       id: randomUUID(),
@@ -164,7 +225,7 @@ export class Compiler {
       status,
       entry_file: project.entry_file,
       pdf_path: pdfPath,
-      synctex_path: null,
+      synctex_path: synctexPath,
       log,
       error,
       requested_by_type: actor.type,
@@ -198,7 +259,7 @@ export class Compiler {
     return job;
   }
 
-  private async run(job: CompileJob, project: ProjectRecord): Promise<void> {
+  private async run(job: CompileJob, project: ProjectRecord, sources: CompileSource[]): Promise<void> {
     const startedAt = new Date().toISOString();
     this.db.run("UPDATE compile_jobs SET status = 'compiling', started_at = ? WHERE id = ?", startedAt, job.id);
     this.events.emit(project.id, { type: 'compile.started', job: { ...publicCompileJob(job), status: 'compiling', startedAt } });
@@ -207,9 +268,9 @@ export class Compiler {
     const outputDir = join(workDir, '.overroot-output');
     try {
       await mkdir(outputDir, { recursive: true });
-      for (const file of this.store.listFiles(project.id)) {
+      for (const file of sources) {
         const destination = join(workDir, file.path);
-        if (!resolve(destination).startsWith(`${resolve(workDir)}/`)) throw new Error('Unsafe project path');
+        if (!isChildPath(workDir, destination)) throw new Error('Unsafe project path');
         let directory = workDir;
         for (const part of file.path.split('/').slice(0, -1)) {
           directory = join(directory, part);
@@ -379,6 +440,11 @@ export function publicCompileJob(job: CompileJob): Record<string, unknown> {
     hasPdf: Boolean(job.pdf_path),
     hasSynctex: Boolean(job.synctex_path)
   };
+}
+
+function isChildPath(parent: string, child: string): boolean {
+  const path = relative(resolve(parent), resolve(child));
+  return path !== '' && path !== '..' && !path.startsWith(`..${sep}`) && !isAbsolute(path);
 }
 
 function workerMatches(containerJson: string, imageJson: string, jobsDir: string): boolean {

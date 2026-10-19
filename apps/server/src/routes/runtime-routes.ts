@@ -26,7 +26,11 @@ export function registerRuntimeRoutes(app: FastifyInstance, context: AppContext)
     const { hash } = z.object({ hash: z.string() }).parse(request.params);
     const access = projectAccess(context.db, actor, hash);
     const job = context.compiler.latest(access.project.id);
-    return { job: job ? publicCompileJob(job) : null };
+    const lastSuccessful = job?.status === 'succeeded' ? job : context.compiler.latestSuccessful(access.project.id);
+    return {
+      job: job ? publicCompileJob(job) : null,
+      lastSuccessfulJob: lastSuccessful ? publicCompileJob(lastSuccessful) : null
+    };
   });
 
   app.get('/api/v1/projects/:hash/compile/:jobId', async (request) => {
