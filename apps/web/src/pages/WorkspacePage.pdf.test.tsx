@@ -7,7 +7,7 @@ import type { CompileJob, ProjectEvent } from '../types';
 const harness = vi.hoisted(() => ({
   api: { getProject: vi.fn(), listFiles: vi.fn(), latestCompile: vi.fn(), getFile: vi.fn(), compilePdf: vi.fn(), compile: vi.fn() },
   flush: vi.fn(),
-  onEvent: null as ((event: Pick<ProjectEvent, 'type' | 'job'>) => void) | null
+  onEvent: null as ((event: Pick<ProjectEvent, 'type' | 'job'> & { reconnected?: boolean }) => void) | null
 }));
 vi.mock('../lib/session', () => ({ useSession: () => ({ api: harness.api, user: { displayName: 'Writer' }, clearSession: vi.fn() }) }));
 vi.mock('../hooks/useTheme', () => ({ useTheme: () => ({ preference: 'light', resolved: 'light', setPreference: vi.fn() }) }));
@@ -82,6 +82,17 @@ it('reuses displayed bytes for an unchanged compile and updates its SyncTeX job'
   harness.api.compile.mockResolvedValue({ job: cached });
   fireEvent.click(screen.getByRole('button', { name: /^Compile$/ }));
   await screen.findByText('PDF good-revision SyncTeX cached-job');
+  expect(harness.api.compilePdf).toHaveBeenCalledTimes(1);
+});
+
+it('refreshes the SyncTeX binding after reconnecting to an unchanged cached PDF', async () => {
+  harness.api.latestCompile.mockResolvedValue({ job: successful });
+  openWorkspace();
+  await screen.findByText('PDF good-revision SyncTeX good-job');
+  const cached = { ...successful, id: 'reconnected-job', createdAt: '2026-10-19T10:00:02.000Z' };
+  harness.api.latestCompile.mockResolvedValue({ job: cached });
+  await act(async () => { harness.onEvent!({ type: 'connected', reconnected: true }); });
+  await screen.findByText('PDF good-revision SyncTeX reconnected-job');
   expect(harness.api.compilePdf).toHaveBeenCalledTimes(1);
 });
 

@@ -188,14 +188,14 @@ function ProjectWorkspace({ hash }: { hash: string }) {
       const accepted = updateJob(compileResponse.job);
       await loadFiles();
       const previewJob = compileResponse.job?.status === 'succeeded' ? compileResponse.job : compileResponse.lastSuccessfulJob;
-      if (previewJob?.hasPdf && (accepted || !currentJob.current?.hasPdf) && previewJob.sourceHash !== pdfRevision) {
+      if (previewJob?.hasPdf && (accepted || !currentJob.current?.hasPdf)) {
         await loadPdf(previewJob);
       }
     } catch (reason) {
       if (reason instanceof ApiError && (reason.status === 403 || reason.status === 404)) navigate('/');
       else setError(reason instanceof Error ? reason.message : 'Could not refresh the project');
     }
-  }, [api, hash, loadFiles, loadPdf, navigate, pdfRevision, updateJob]);
+  }, [api, hash, loadFiles, loadPdf, navigate, updateJob]);
 
   useEffect(() => { void loadProject(); }, [loadProject]);
   useEffect(() => () => { if (activityTimer.current != null) clearTimeout(activityTimer.current); }, []);
