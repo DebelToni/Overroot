@@ -263,6 +263,7 @@ export class Compiler {
 
     const workDir = join(this.jobsDir, job.id);
     const outputDir = join(workDir, '.overroot-output');
+    const temporaryArtifacts: string[] = [];
     try {
       await stageCompileSources(workDir, sources);
 
@@ -313,6 +314,8 @@ export class Compiler {
       const synctexPath = (await fileExists(generatedSynctex)) ? join(this.cacheDir, `${job.source_hash}.synctex.gz`) : null;
       const pdfTemp = `${pdfPath}.${job.id}.tmp`;
       const logTemp = `${logPath}.${job.id}.tmp`;
+      // Register before writing: even a failed copy can leave a partial file.
+      temporaryArtifacts.push(pdfTemp, logTemp);
       await copyFile(generatedPdf, pdfTemp);
       if (!(await hasPdfSignature(pdfTemp))) throw new Error('Compiler produced an invalid PDF');
       await writeFile(logTemp, log, { mode: 0o600 });
@@ -320,6 +323,7 @@ export class Compiler {
       await rename(logTemp, logPath);
       if (synctexPath) {
         const synctexTemp = `${synctexPath}.${job.id}.tmp`;
+        temporaryArtifacts.push(synctexTemp);
         await copyFile(generatedSynctex, synctexTemp);
         await rename(synctexTemp, synctexPath);
       }
@@ -349,7 +353,7 @@ export class Compiler {
       const failed = this.get(job.id, project.id)!;
       this.events.emit(project.id, { type: 'compile.failed', job: publicCompileJob(failed) });
     } finally {
-      await rm(workDir, { recursive: true, force: true });
+      await cleanupCompileFiles(workDir, temporaryArtifacts);
     }
   }
 
@@ -504,6 +508,17 @@ async function validCachedPdf(path: string): Promise<boolean> {
     if ((error as NodeJS.ErrnoException).code === 'ENOENT') return false;
     throw error;
   }
+}
+
+async function cleanupCompileFiles(workDir: string, temporaryArtifacts: readonly string[]): Promise<void> {
+  const cleanup = await Promise.allSettled([
+    rm(workDir, { recursive: true, force: true }),
+    ...temporaryArtifacts.map(path => rm(path, { force: true }))
+  ]);
+  // Drain every cleanup operation before releasing the job's admission slot.
+  // Final cache artifacts and other jobs' temporary files are never removed.
+  const failure = cleanup.find(result => result.status === 'rejected');
+  if (failure?.status === 'rejected') throw failure.reason;
 }
 
 async function readOptional(path: string): Promise<string> {
