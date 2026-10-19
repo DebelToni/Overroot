@@ -61,7 +61,7 @@ async function setup() {
   return { request, project, actor, original, pdf, events };
 }
 
-it.each(['', '%PD', 'broken cache artifact'])('recompiles a corrupt cached PDF %j and reuses the repaired output', async corruption => {
+it.each(['', '%PD', 'broken cache artifact', '%PDF-1.7\ntruncated'])('recompiles a corrupt cached PDF %j and reuses the repaired output', async corruption => {
   const h = await setup();
   await writeFile(h.original.pdf_path!, corruption);
   const repaired = await h.request();

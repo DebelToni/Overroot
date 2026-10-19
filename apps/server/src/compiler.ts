@@ -9,7 +9,7 @@ import { HttpError } from './errors.js';
 import type { ProjectStore } from './project-store.js';
 import type { ActorIdentity, ProjectRecord } from './types.js';
 import { stageCompileSources, type CompileSource } from './compile-staging.js';
-import { hasPdfSignature } from './compile-artifacts.js';
+import { hasPdfEnvelope } from './compile-artifacts.js';
 
 export interface CompileJob {
   id: string;
@@ -317,7 +317,7 @@ export class Compiler {
       // Register before writing: even a failed copy can leave a partial file.
       temporaryArtifacts.push(pdfTemp, logTemp);
       await copyFile(generatedPdf, pdfTemp);
-      if (!(await hasPdfSignature(pdfTemp))) throw new Error('Compiler produced an invalid PDF');
+      if (!(await hasPdfEnvelope(pdfTemp))) throw new Error('Compiler produced an invalid PDF');
       await writeFile(logTemp, log, { mode: 0o600 });
       await rename(pdfTemp, pdfPath);
       await rename(logTemp, logPath);
@@ -501,7 +501,7 @@ async function fileExists(path: string): Promise<boolean> {
 
 async function validCachedPdf(path: string): Promise<boolean> {
   try {
-    return await hasPdfSignature(path);
+    return await hasPdfEnvelope(path);
   } catch (error) {
     // A cache artifact can disappear between stat and open. Recompile the
     // already frozen snapshot instead of reporting a successful broken cache hit.

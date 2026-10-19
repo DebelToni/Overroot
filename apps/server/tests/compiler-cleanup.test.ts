@@ -6,8 +6,8 @@ import { buildApp } from '../src/app.js';
 import { config } from '../src/config.js';
 import type { AppContext } from '../src/context.js';
 
-type Failure = 'pdf-copy' | 'invalid-pdf' | 'log-write' | 'pdf-rename' | 'log-rename' | 'synctex-copy' | 'synctex-rename';
-const io = vi.hoisted(() => ({ failure: null as Failure | null, injected: false }));
+type Failure = 'pdf-copy' | 'invalid-pdf' | 'footer-read' | 'log-write' | 'pdf-rename' | 'log-rename' | 'synctex-copy' | 'synctex-rename';
+const io = vi.hoisted(() => ({ failure: null as Failure | null, injected: false, closes: 0 }));
 vi.mock('node:fs/promises', async (importOriginal) => {
   const fs = await importOriginal<typeof import('node:fs/promises')>();
   function fail(type: Failure, path: string) {
@@ -17,6 +17,19 @@ vi.mock('node:fs/promises', async (importOriginal) => {
     }
   }
   return { ...fs,
+    open: async (...args: Parameters<typeof fs.open>) => {
+      const handle = await fs.open(...args);
+      const path = String(args[0]);
+      if (io.failure !== 'footer-read' || !path.endsWith('.tmp')) return handle;
+      return {
+        read: (buffer: Buffer, offset: number, length: number, position: number) => {
+          if (position >= 5) fail('footer-read', path);
+          return handle.read(buffer, offset, length, position);
+        },
+        stat: () => handle.stat(),
+        close: async () => { io.closes++; await handle.close(); }
+      };
+    },
     copyFile: async (...args: Parameters<typeof fs.copyFile>) => {
       await fs.copyFile(...args);
       const destination = String(args[1]);
@@ -60,13 +73,14 @@ beforeEach(() => {
 afterEach(async () => {
   io.failure = null;
   io.injected = false;
+  io.closes = 0;
   if (app) await app.close();
   config.fakeCompiler = previous.fake;
   config.compileMaxJobs = previous.jobs;
   if (dir) await rm(dir, { recursive: true, force: true });
 });
 
-it.each<Failure>(['pdf-copy', 'invalid-pdf', 'log-write', 'pdf-rename', 'log-rename', 'synctex-copy', 'synctex-rename'])(
+it.each<Failure>(['pdf-copy', 'invalid-pdf', 'footer-read', 'log-write', 'pdf-rename', 'log-rename', 'synctex-copy', 'synctex-rename'])(
   'cleans only owned temporary artifacts after %s and recovers the queue', async failure => {
     dir = await mkdtemp(join(tmpdir(), 'overroot-cleanup-'));
     ({ app, context } = await buildApp({ databasePath: join(dir, 'test.sqlite3'), logger: false }));
@@ -82,6 +96,7 @@ it.each<Failure>(['pdf-copy', 'invalid-pdf', 'log-write', 'pdf-rename', 'log-ren
     const failed = await context.compiler.request(project, actor);
     await vi.waitFor(() => expect(context.compiler.get(failed.id, project.id)?.status).toBe('failed'));
     expect(io.injected).toBe(true);
+    if (failure === 'footer-read') expect(io.closes).toBe(1);
     expect(context.compiler.get(failed.id, project.id)?.error).toContain(
       failure === 'invalid-pdf' ? 'Compiler produced an invalid PDF' : `Controlled ${failure} failure`
     );
