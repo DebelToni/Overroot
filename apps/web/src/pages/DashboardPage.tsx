@@ -4,6 +4,7 @@ import { useNavigate } from 'react-router-dom';
 import { Brand } from '../components/Brand';
 import { AccountDialog, NewProjectDialog, InvitesDialog } from '../components/DashboardDialogs';
 import { InlineError, LoadingBlock } from '../components/Feedback';
+import { PendingLabel } from '../components/RootMark';
 import { ThemeControl } from '../components/ThemeControl';
 import { useTheme } from '../hooks/useTheme';
 import { initials, relativeTime } from '../lib/format';
@@ -45,6 +46,7 @@ export function DashboardPage() {
   }
 
   async function importZip(file: File) {
+    if (importing) return;
     setImporting(true); setError(null);
     try { const response = await api.importProject(file); navigate(`/project/${response.project.hash}`); }
     catch (reason) { setError(reason instanceof Error ? reason.message : 'Could not import ZIP'); }
@@ -66,7 +68,7 @@ export function DashboardPage() {
       <section className="dashboard-intro">
         <h1>Projects</h1>
         <div className="dashboard-intro__actions">
-          <button className="secondary-button" type="button" onClick={() => importInput.current?.click()} disabled={importing}><Upload size={15}/>{importing ? 'Importing…' : 'Import ZIP'}</button>
+          <button className="secondary-button" type="button" onClick={() => importInput.current?.click()} disabled={importing} aria-busy={importing}>{importing ? <PendingLabel>Importing ZIP…</PendingLabel> : <><Upload size={15}/>Import ZIP</>}</button>
           <input ref={importInput} hidden type="file" accept=".zip,application/zip" onChange={(event) => { const file = event.target.files?.[0]; if (file) void importZip(file); event.target.value = ''; }}/>
           <button className="primary-button" type="button" onClick={() => setNewOpen(true)}><Plus size={15}/> New project</button>
         </div>

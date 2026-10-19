@@ -6,6 +6,7 @@ import type { Template } from '../types';
 import { CopyButton } from './CopyButton';
 import { InlineError, LoadingBlock } from './Feedback';
 import { Modal } from './Modal';
+import { PendingLabel } from './RootMark';
 
 export function NewProjectDialog({
   open,
@@ -25,6 +26,7 @@ export function NewProjectDialog({
   useEffect(() => { if (open) { setName('Untitled paper'); setTemplate(templates[0]?.id ?? 'article'); setError(null); } }, [open, templates]);
   async function submit(event: FormEvent) {
     event.preventDefault();
+    if (busy) return;
     setBusy(true); setError(null);
     try { await onCreate(name, template); onClose(); } catch (reason) { setError(reason instanceof Error ? reason.message : 'Could not create project'); } finally { setBusy(false); }
   }
@@ -39,7 +41,7 @@ export function NewProjectDialog({
         </label>)}
       </fieldset>
       <InlineError message={error}/>
-      <div className="form-actions"><button type="button" className="plain-button" onClick={onClose}>Cancel</button><button type="submit" className="primary-button" disabled={busy || !name.trim()}>{busy ? 'Creating…' : 'Create project'}</button></div>
+      <div className="form-actions"><button type="button" className="plain-button" onClick={onClose}>Cancel</button><button type="submit" className="primary-button" disabled={busy || !name.trim()} aria-busy={busy}>{busy ? <PendingLabel>Creating project…</PendingLabel> : 'Create project'}</button></div>
     </form>
   </Modal>;
 }

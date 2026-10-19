@@ -1,4 +1,5 @@
-import { AlertCircle, CheckCircle2, LoaderCircle } from 'lucide-react';
+import { AlertCircle, CheckCircle2 } from 'lucide-react';
+import { RootMark } from './RootMark';
 
 export function InlineError({ message }: { message: string | null | undefined }) {
   if (!message) return null;
@@ -11,5 +12,5 @@ export function InlineSuccess({ message }: { message: string | null | undefined 
 }
 
 export function LoadingBlock({ label = 'Loading' }: { label?: string }) {
-  return <div className="loading-block" role="status"><LoaderCircle className="spin" size={17}/><span>{label}</span></div>;
+  return <div className="loading-block" role="status"><RootMark motion="grow"/><span>{label}</span></div>;
 }
