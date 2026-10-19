@@ -127,7 +127,7 @@ export class Compiler {
 
       const cachedPdf = join(this.cacheDir, `${sourceHash}.pdf`);
       const cachedLog = join(this.cacheDir, `${sourceHash}.log`);
-      if (await fileExists(cachedPdf)) {
+      if (await fileExists(cachedPdf) && await validCachedPdf(cachedPdf)) {
         const cachedSynctex = join(this.cacheDir, `${sourceHash}.synctex.gz`);
         const synctexPath = await fileExists(cachedSynctex) ? cachedSynctex : null;
         const now = new Date().toISOString();
@@ -492,6 +492,17 @@ async function fileExists(path: string): Promise<boolean> {
     return (await stat(path)).isFile();
   } catch {
     return false;
+  }
+}
+
+async function validCachedPdf(path: string): Promise<boolean> {
+  try {
+    return await hasPdfSignature(path);
+  } catch (error) {
+    // A cache artifact can disappear between stat and open. Recompile the
+    // already frozen snapshot instead of reporting a successful broken cache hit.
+    if ((error as NodeJS.ErrnoException).code === 'ENOENT') return false;
+    throw error;
   }
 }
 
