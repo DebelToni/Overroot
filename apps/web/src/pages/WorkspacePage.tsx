@@ -10,6 +10,7 @@ import { FileTree } from '../components/FileTree';
 import { InlineError, LoadingBlock } from '../components/Feedback';
 import { ThemeControl } from '../components/ThemeControl';
 import { Modal } from '../components/Modal';
+import { PendingLabel } from '../components/RootMark';
 import {
   AgentDialog, CompileLogDrawer, FileActionsDialog, HistoryDrawer, NewFileDialog,
   ProjectSettingsDialog, ShareDialog
@@ -31,6 +32,10 @@ const PdfViewer = lazy(() => import('../components/PdfViewer').then((module) => 
 
 export function WorkspacePage() {
   const { hash = '' } = useParams();
+  return <ProjectWorkspace key={hash} hash={hash}/>;
+}
+
+function ProjectWorkspace({ hash }: { hash: string }) {
   const navigate = useNavigate();
   const { api, user, clearSession } = useSession();
   const theme = useTheme();
@@ -39,6 +44,7 @@ export function WorkspacePage() {
   const [selected, setSelected] = useState<ProjectFile | null>(null);
   const [editorMode, setEditorMode] = useState<'manuscript' | 'files'>('manuscript');
   const [job, setJob] = useState<CompileJob | null>(null);
+  const [submission, setSubmission] = useState<'saving' | 'starting' | null>(null);
   const [pdf, setPdf] = useState<ArrayBuffer | null>(null);
   const [pdfRevision, setPdfRevision] = useState<string | null>(null);
   const [pdfJobId, setPdfJobId] = useState<string | null>(null);
@@ -46,6 +52,8 @@ export function WorkspacePage() {
   const [pdfLoading, setPdfLoading] = useState(false);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [pollError, setPollError] = useState<string | null>(null);
+  const [pdfError, setPdfError] = useState<string | null>(null);
   const [activity, setActivity] = useState<string | null>(null);
   const [presence, setPresence] = useState<PresenceUser[]>([]);
   const [historyKey, setHistoryKey] = useState(0);
@@ -64,9 +72,29 @@ export function WorkspacePage() {
   const workspaceRef = useRef<HTMLDivElement>(null);
   const activityTimer = useRef<number | null>(null);
   const pdfRequest = useRef(0);
+  const pdfContext = useRef(api);
+  pdfContext.current = api;
+  const pdfArtifact = useRef<{ api: typeof api; projectHash: string; sourceHash: string } | null>(null);
+  const pendingPdf = useRef<{ api: typeof api; projectHash: string; job: CompileJob; promise: Promise<void> } | null>(null);
+  const latestPdfJob = useRef<{ api: typeof api; job: CompileJob } | null>(null);
+  const currentJob = useRef<CompileJob | null>(null);
+  const jobVersion = useRef(0);
+  const submitting = useRef(false);
   const selectionRequest = useRef(0);
   const navigationRequest = useRef(0);
   const editorFlush = useRef<(() => Promise<void>) | null>(null);
+
+  const updateJob = useCallback((next: CompileJob | null) => {
+    const current = currentJob.current;
+    // WebSocket completion can beat the POST response or an in-flight poll.
+    if (current && (!next || next.createdAt < current.createdAt ||
+      (next.id === current.id && compileStage(next) < compileStage(current)))) return false;
+    currentJob.current = next;
+    jobVersion.current += 1;
+    setJob(next);
+    setPollError(null);
+    return true;
+  }, []);
 
   const flashActivity = useCallback((text: string) => {
     setActivity(text);
@@ -91,21 +119,49 @@ export function WorkspacePage() {
     } else setSelected(null);
   }, [api, hash, project?.entryFile, selected?.id]);
 
-  const loadPdf = useCallback(async (nextJob: CompileJob) => {
-    if (!nextJob.hasPdf) return;
-    const requestId = ++pdfRequest.current;
-    setPdfLoading(true);
-    try {
-      const result = await api.compilePdf(hash, nextJob.id);
-      if (requestId !== pdfRequest.current) return;
-      setPdf(result.data);
-      setPdfRevision(nextJob.sourceHash);
+  const loadPdf = useCallback((nextJob: CompileJob): Promise<void> => {
+    if (!nextJob.hasPdf) return Promise.resolve();
+    // A delayed reload/reconnect fallback must not replace a newer good preview,
+    // even when an even newer compile has since failed.
+    if (latestPdfJob.current?.api === api && nextJob.createdAt < latestPdfJob.current.job.createdAt) return Promise.resolve();
+    latestPdfJob.current = { api, job: nextJob };
+    if (pdfArtifact.current?.api === api && pdfArtifact.current.projectHash === hash && pdfArtifact.current.sourceHash === nextJob.sourceHash) {
+      // A cache hit creates a new job/SyncTeX endpoint, but its PDF bytes are identical.
+      ++pdfRequest.current;
+      pendingPdf.current = null;
+      setPdfLoading(false);
+      setPdfError(null);
       setPdfJobId(nextJob.hasSynctex ? nextJob.id : null);
-    } catch (reason) {
-      if (requestId === pdfRequest.current) setError(reason instanceof Error ? reason.message : 'Could not load PDF');
-    } finally {
-      if (requestId === pdfRequest.current) setPdfLoading(false);
+      return Promise.resolve();
     }
+    const pending = pendingPdf.current;
+    if (pending?.api === api && pending.projectHash === hash && pending.job.sourceHash === nextJob.sourceHash) {
+      pending.job = nextJob;
+      return pending.promise;
+    }
+    const requestId = ++pdfRequest.current;
+    const download = { api, projectHash: hash, job: nextJob, promise: Promise.resolve() };
+    pendingPdf.current = download;
+    setPdfLoading(true);
+    setPdfError(null);
+    download.promise = (async () => {
+      try {
+        const result = await api.compilePdf(hash, nextJob.id);
+        if (requestId !== pdfRequest.current || pdfContext.current !== api) return;
+        pdfArtifact.current = { api, projectHash: hash, sourceHash: nextJob.sourceHash };
+        setPdf(result.data);
+        setPdfRevision(nextJob.sourceHash);
+        setPdfJobId(download.job.hasSynctex ? download.job.id : null);
+      } catch (reason) {
+        if (requestId === pdfRequest.current && pdfContext.current === api) setPdfError(reason instanceof Error ? reason.message : 'Could not load PDF');
+      } finally {
+        if (requestId === pdfRequest.current) {
+          pendingPdf.current = null;
+          setPdfLoading(false);
+        }
+      }
+    })();
+    return download.promise;
   }, [api, hash]);
 
   const loadProject = useCallback(async () => {
@@ -116,30 +172,30 @@ export function WorkspacePage() {
       ]);
       setProject(projectResponse.project);
       setFiles(fileResponse.files);
-      setJob(compileResponse.job);
+      const accepted = updateJob(compileResponse.job);
       const initial = fileResponse.files.find((file) => file.path === projectResponse.project.entryFile) ?? fileResponse.files[0];
       if (initial) setSelected((await api.getFile(hash, initial.id)).file);
       const previewJob = compileResponse.job?.status === 'succeeded' ? compileResponse.job : compileResponse.lastSuccessfulJob;
-      if (previewJob?.hasPdf) await loadPdf(previewJob);
+      if (previewJob?.hasPdf && (accepted || !currentJob.current?.hasPdf)) await loadPdf(previewJob);
     } catch (reason) { setError(reason instanceof Error ? reason.message : 'Could not open project'); }
     finally { setLoading(false); }
-  }, [api, hash, loadPdf]);
+  }, [api, hash, loadPdf, updateJob]);
 
   const reconcile = useCallback(async () => {
     try {
       const [projectResponse, compileResponse] = await Promise.all([api.getProject(hash), api.latestCompile(hash)]);
       setProject(projectResponse.project);
-      setJob(compileResponse.job);
+      const accepted = updateJob(compileResponse.job);
       await loadFiles();
       const previewJob = compileResponse.job?.status === 'succeeded' ? compileResponse.job : compileResponse.lastSuccessfulJob;
-      if (previewJob?.hasPdf && previewJob.sourceHash !== pdfRevision) {
+      if (previewJob?.hasPdf && (accepted || !currentJob.current?.hasPdf) && previewJob.sourceHash !== pdfRevision) {
         await loadPdf(previewJob);
       }
     } catch (reason) {
       if (reason instanceof ApiError && (reason.status === 403 || reason.status === 404)) navigate('/');
       else setError(reason instanceof Error ? reason.message : 'Could not refresh the project');
     }
-  }, [api, hash, loadFiles, loadPdf, navigate, pdfRevision]);
+  }, [api, hash, loadFiles, loadPdf, navigate, pdfRevision, updateJob]);
 
   useEffect(() => { void loadProject(); }, [loadProject]);
   useEffect(() => () => { if (activityTimer.current != null) clearTimeout(activityTimer.current); }, []);
@@ -150,9 +206,9 @@ export function WorkspacePage() {
       return;
     }
     if (event.type.startsWith('compile.') && event.job) {
-      setJob(event.job);
-      if (event.type === 'compile.ready') void loadPdf(event.job);
-      if (event.type === 'compile.failed') setLogOpen(true);
+      const accepted = updateJob(event.job);
+      if (accepted && event.type === 'compile.ready') void loadPdf(event.job);
+      if (accepted && event.type === 'compile.failed') setLogOpen(true);
     }
     if (event.type === 'file.created' || event.type === 'file.deleted' || event.type === 'file.renamed') {
       void loadFiles();
@@ -170,21 +226,27 @@ export function WorkspacePage() {
       }
     }
     if (event.type === 'project.updated' || event.type === 'members.changed') void reconcile();
-  }, [api, hash, loadFiles, loadPdf, flashActivity, project?.canWrite, reconcile, selected?.id]);
+  }, [api, hash, loadFiles, loadPdf, flashActivity, project?.canWrite, reconcile, selected?.id, updateJob]);
   useProjectEvents(api, hash, handleEvent);
 
   useEffect(() => {
     if (!job || (job.status !== 'queued' && job.status !== 'compiling')) return;
+    let stopped = false;
+    let polling = false;
     const timer = window.setInterval(() => {
+      if (polling) return;
+      polling = true;
+      const version = jobVersion.current;
       void api.latestCompile(hash).then(({ job: latest }) => {
-        if (!latest) return;
-        setJob(latest);
+        if (stopped || version !== jobVersion.current || !latest || !updateJob(latest)) return;
         if (latest.status === 'succeeded' && latest.hasPdf) void loadPdf(latest);
         if (latest.status === 'failed') setLogOpen(true);
-      });
+      }).catch((reason: unknown) => {
+        if (!stopped && version === jobVersion.current) setPollError(reason instanceof Error ? reason.message : 'Could not check compilation. Retrying…');
+      }).finally(() => { polling = false; });
     }, 1400);
-    return () => window.clearInterval(timer);
-  }, [api, hash, job?.status, loadPdf]);
+    return () => { stopped = true; window.clearInterval(timer); };
+  }, [api, hash, job?.status, loadPdf, updateJob]);
 
   const onPresence = useCallback((users: PresenceUser[]) => setPresence(users), []);
   const onCursorChange = useCallback((location: SourceLocation | null) => setSourceLocation(location), []);
@@ -251,13 +313,17 @@ export function WorkspacePage() {
   }
 
   async function compile() {
+    if (submitting.current || (currentJob.current && compileStage(currentJob.current) < 2)) return;
+    submitting.current = true;
+    setSubmission('saving');
     setError(null);
     try {
       await editorFlush.current?.();
+      setSubmission('starting');
       const response = await api.compile(hash);
-      setJob(response.job);
-      if (response.job.status === 'succeeded') await loadPdf(response.job);
+      if (updateJob(response.job) && response.job.status === 'succeeded') await loadPdf(response.job);
     } catch (reason) { setError(reason instanceof Error ? reason.message : 'Could not compile'); }
+    finally { submitting.current = false; setSubmission(null); }
   }
 
   async function exportZip() {
@@ -308,7 +374,8 @@ export function WorkspacePage() {
   if (loading) return <div className="workspace-loading"><Brand/><LoadingBlock label="Opening project"/></div>;
   if (!project || !user) return <div className="workspace-loading"><Brand/><InlineError message={error ?? 'Project not found'}/><button className="plain-button" onClick={() => navigate('/')}>Back to projects</button></div>;
 
-  const compiling = job?.status === 'queued' || job?.status === 'compiling';
+  const compiling = submission != null || job?.status === 'queued' || job?.status === 'compiling';
+  const compileLabel = submission === 'saving' ? 'Saving changes…' : submission === 'starting' ? 'Starting compilation…' : 'Compiling…';
   return <div className={`workspace-shell ${focusPdf ? 'workspace-shell--pdf-focus' : ''}`} data-mobile-pane={mobilePane}>
     <header className="workspace-head">
       <button className="icon-button workspace-back" type="button" onClick={() => navigate('/')} aria-label="Back to projects"><ArrowLeft size={17}/></button>
@@ -323,12 +390,12 @@ export function WorkspacePage() {
         {project.canManage && <button className="plain-button workspace-action-text" type="button" aria-label="Agents" title="Agents" onClick={() => setAgentOpen(true)}><Braces size={14}/> Agents</button>}
         {project.canManage && <button className="icon-button" type="button" onClick={() => setSettingsOpen(true)} aria-label="Project settings"><Settings2 size={15}/></button>}
         <ThemeControl value={theme.preference} onChange={theme.setPreference}/>
-        <button className="compile-button" type="button" disabled={!project.canWrite || compiling} onClick={() => void compile()}><Play size={14} fill="currentColor"/>{compiling ? 'Compiling…' : 'Compile'}</button>
+        <button className="compile-button" type="button" disabled={!project.canWrite || compiling} onClick={() => void compile()}>{compiling ? <PendingLabel>{compileLabel}</PendingLabel> : <><Play size={14} fill="currentColor"/>Compile</>}</button>
         <button className="icon-button desktop-logout" type="button" onClick={() => void logout()} aria-label="Log out"><LogOut size={15}/></button>
         <button className="icon-button mobile-more-button" type="button" onClick={() => setMobileMenuOpen(true)} aria-label="More workspace actions"><MoreHorizontal size={17}/></button>
       </div>
     </header>
-    <div className={`compile-progress compile-progress--${job?.status ?? 'idle'}`}><i/></div>
+    <div className={`compile-progress compile-progress--${submission ? 'queued' : job?.status ?? 'idle'}`}><i/></div>
     <div className="mobile-tabs" role="tablist" aria-label="Workspace panes">
       <button role="tab" aria-selected={mobilePane === 'files'} onClick={() => setMobilePane('files')}><Menu size={14}/> Files</button>
       <button role="tab" aria-selected={mobilePane === 'editor'} onClick={() => setMobilePane('editor')}><Braces size={14}/> Edit</button>
@@ -359,7 +426,7 @@ export function WorkspacePage() {
       <button type="button" onClick={() => setLogOpen(true)} className={`compile-state compile-state--${job?.status ?? 'idle'}`}><i/>{job ? job.status : 'Not compiled'}{job?.finishedAt && <span> · {relativeTime(job.finishedAt)}</span>}</button>
       <span>{editorMode === 'manuscript' ? `Manuscript${sourceLocation ? ` · ${sourceLocation.path}:${sourceLocation.line}` : ''}` : selected ? `${selected.path} · ${selected.kind}` : 'No file selected'}</span><span className="workspace-status__spacer"/><span>{project.memberCount} member{project.memberCount === 1 ? '' : 's'}</span>
     </footer>
-    <InlineError message={error}/>
+    <InlineError message={error ?? pdfError ?? pollError}/>
 
     <NewFileDialog open={newFileOpen} onClose={() => setNewFileOpen(false)} onCreate={createFile}/>
     <FileActionsDialog open={Boolean(fileActions)} file={fileActions} entryFile={project.entryFile} canSetEntry={project.canManage} onClose={() => setFileActions(null)} onRename={renameFile} onDelete={async () => { const id = fileActions!.id; await api.deleteFile(hash, id); if (selected?.id === id) setSelected(null); await loadFiles(); }} onSetEntry={async () => { const response = await api.updateProject(hash, { entryFile: fileActions!.path }); setProject(response.project); }}/>
@@ -381,4 +448,5 @@ export function WorkspacePage() {
 }
 
 function isTextUpload(file: File) { return file.type.startsWith('text/') || /\.(tex|bib|sty|cls|txt|md|csv|json|ya?ml|xml|svg|tikz)$/i.test(file.name); }
+function compileStage(job: CompileJob) { return job.status === 'queued' ? 0 : job.status === 'compiling' ? 1 : 2; }
 function toBase64(buffer: ArrayBuffer) { const bytes = new Uint8Array(buffer); let binary = ''; const chunk = 0x8000; for (let offset = 0; offset < bytes.length; offset += chunk) binary += String.fromCharCode(...bytes.subarray(offset, offset + chunk)); return btoa(binary); }
