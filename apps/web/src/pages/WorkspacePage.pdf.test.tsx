@@ -131,6 +131,21 @@ it('disables compilation while source synchronization and submission are pending
   expect(harness.api.compile).toHaveBeenCalledTimes(1);
 });
 
+it('finishes submission when the server succeeds while its PDF download is still pending', async () => {
+  openWorkspace();
+  await screen.findByText('Test manuscript');
+  const download = deferred<{ data: ArrayBuffer }>();
+  harness.api.compile.mockResolvedValue({ job: successful });
+  harness.api.compilePdf.mockReturnValue(download.promise);
+  fireEvent.click(screen.getByRole('button', { name: /^Compile$/ }));
+  await waitFor(() => expect(harness.api.compilePdf).toHaveBeenCalledTimes(1));
+  expect(screen.getByRole('button', { name: /^succeeded/ })).toBeInTheDocument();
+  expect(screen.getByRole('button', { name: /^Compile$/ })).toBeEnabled();
+  expect(screen.queryByText('Starting compilation…')).not.toBeInTheDocument();
+  await act(async () => { download.resolve({ data: new ArrayBuffer(1) }); });
+  await screen.findByText('PDF good-revision SyncTeX good-job');
+});
+
 it('re-enables compilation after source synchronization fails without submitting stale source', async () => {
   openWorkspace();
   await screen.findByText('Test manuscript');

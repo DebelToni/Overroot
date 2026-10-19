@@ -321,7 +321,7 @@ function ProjectWorkspace({ hash }: { hash: string }) {
       await editorFlush.current?.();
       setSubmission('starting');
       const response = await api.compile(hash);
-      if (updateJob(response.job) && response.job.status === 'succeeded') await loadPdf(response.job);
+      if (updateJob(response.job) && response.job.status === 'succeeded') void loadPdf(response.job);
     } catch (reason) { setError(reason instanceof Error ? reason.message : 'Could not compile'); }
     finally { submitting.current = false; setSubmission(null); }
   }
