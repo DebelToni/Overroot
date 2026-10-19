@@ -72,6 +72,18 @@ function startFileMutation(operation: string, path: string, content: string, ren
   }
 }
 
+it('shows opening progress only while the project request is pending', async () => {
+  const project = deferred<Awaited<ReturnType<typeof harness.api.getProject>>>();
+  harness.api.getProject.mockReturnValueOnce(project.promise);
+  render(<MemoryRouter initialEntries={['/project/project']}><Routes><Route path="/project/:hash" element={<WorkspacePage/>}/></Routes></MemoryRouter>);
+  const status = screen.getByRole('status');
+  expect(status).toHaveTextContent('Opening project');
+  expect(status.querySelector('svg')).toHaveAttribute('aria-hidden', 'true');
+  await act(async () => { project.resolve({ project: { hash: 'project', name: 'Paper', entryFile: 'main.tex', role: 'owner', canWrite: true, canManage: true, memberCount: 1 } }); });
+  await screen.findByText('Manuscript test editor');
+  expect(screen.queryByText('Opening project')).not.toBeInTheDocument();
+});
+
 describe('source-view navigation races', () => {
   it.each(['create', 'upload', 'rename'])('still reports a pending %s failure after a newer tree selection', async (operation) => {
     await openWorkspace();
