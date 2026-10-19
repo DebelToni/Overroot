@@ -56,7 +56,7 @@ export function ManuscriptPane({ api, projectHash, entryFile, files, user, canWr
     const updateStatus = () => {
       const connected = states.size === metadata.length && [...states.values()].every((state) => state === 'connected');
       setStatus(canWrite ? connected ? 'connected' : 'Synchronizing…' : 'read only');
-      editor.current?.view.dispatch({ effects: readOnly.reconfigure(EditorState.readOnly.of(!canWrite || !connected)) });
+      editor.current?.view.dispatch({ effects: readOnly.reconfigure([EditorState.readOnly.of(!canWrite || !connected), EditorView.editable.of(canWrite && connected)]) });
     };
     void Promise.all(metadata.map(async (file) => {
       const response = await api.getFile(projectHash, file.id);
@@ -76,10 +76,11 @@ export function ManuscriptPane({ api, projectHash, entryFile, files, user, canWr
       });
       editor.current = new ManuscriptEditor(mount.current, entryFile, documents, [
         lineNumbers(), highlightActiveLine(), EditorView.lineWrapping,
+        EditorView.contentAttributes.of({ 'aria-label': 'Manuscript source', tabindex: '0' }),
         closeBrackets(), autocompletion(), latex(),
         keymap.of([...defaultKeymap, ...searchKeymap, indentWithTab]),
         theme.current.of(editorTheme(darkRef.current)),
-        readOnly.of(EditorState.readOnly.of(true))
+        readOnly.of([EditorState.readOnly.of(true), EditorView.editable.of(false)])
       ], (id) => canWrite && states.get(id) === 'connected', onCursorChange, (message, issues) => { setNotice(message); setWarnings(issues); });
       onFlushReady(canWrite ? async () => { await Promise.all([...providers.values()].map((provider) => provider.flush())); } : null);
       updateStatus(); updatePresence();

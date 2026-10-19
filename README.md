@@ -64,6 +64,27 @@ Create a separate invitation for every person. If a link is consumed by the wron
 
 Editors can work in the same text file simultaneously. Presence appears in the header, changes synchronize live, and **History** records who produced each saved revision.
 
+### Write as one manuscript
+
+Projects open in **Manuscript**, a continuous editable LaTeX source view. Literal
+`\input{sections/introduction}` and `\include{sections/results}` commands expand
+their source files in place. Every edit saves to its original file; there is no
+merged file to synchronize. Agents keep using the same modular files and API.
+
+File headings and expanded include commands are protected. Edit within one
+section at a time; selections crossing a file boundary can be copied but cannot
+be replaced or deleted. **Files**, or selecting an item in the file tree, opens
+the individual source editor for changing includes, file structure, bibliography,
+or other project files. Switching views and compiling first synchronize all open
+modules. The cursor's original file and line drive PDF highlighting and History.
+
+The view expands literal braced includes from the compilation root, including
+nested inputs. It does not evaluate TeX macros or conditional execution. Comments,
+verbatim examples and inputs inside macro arguments are not expanded. Missing,
+repeated and cyclic inputs display a warning; repeated files appear once for
+editing. Advanced TeX remains available in **Files**, and compilation and ZIP
+exports always use the original project files.
+
 ### 3. Compile and review
 
 Select **Compile** to flush the current collaborative editor state and run Tectonic. Successful output appears in the PDF pane for every connected collaborator. A completely empty document body has no printable page, so add content between `\begin{document}` and `\end{document}` before compiling a blank template.
