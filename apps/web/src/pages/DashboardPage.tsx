@@ -16,24 +16,41 @@ export function DashboardPage() {
   const theme = useTheme();
   const navigate = useNavigate();
   const importInput = useRef<HTMLInputElement>(null);
+  const generation = useRef(0);
+  const loadId = useRef(0);
+  const newVisible = useRef(false);
   const [projects, setProjects] = useState<ProjectSummary[]>([]);
   const [templates, setTemplates] = useState<Template[]>([]);
   const [loading, setLoading] = useState(true);
   const [importing, setImporting] = useState(false);
+  const [creating, setCreating] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [newOpen, setNewOpen] = useState(false);
   const [invitesOpen, setInvitesOpen] = useState(false);
   const [accountOpen, setAccountOpen] = useState(false);
 
   async function load() {
+    const requestGeneration = generation.current;
+    const requestId = ++loadId.current;
+    const isCurrent = () => requestGeneration === generation.current && requestId === loadId.current;
     setLoading(true); setError(null);
     try {
       const [projectResponse, templateResponse] = await Promise.all([api.listProjects(), api.listTemplates()]);
-      setProjects(projectResponse.projects); setTemplates(templateResponse.templates);
-    } catch (reason) { setError(reason instanceof Error ? reason.message : 'Could not load projects'); }
-    finally { setLoading(false); }
+      if (isCurrent()) { setProjects(projectResponse.projects); setTemplates(templateResponse.templates); }
+    } catch (reason) { if (isCurrent()) setError(reason instanceof Error ? reason.message : 'Could not load projects'); }
+    finally { if (isCurrent()) setLoading(false); }
   }
-  useEffect(() => { void load(); }, [api]);
+  useEffect(() => {
+    generation.current += 1;
+    void load();
+    return () => { generation.current += 1; };
+  }, [api]);
+
+  function showNewProject(open: boolean) {
+    newVisible.current = open;
+    if (open) setError(null);
+    setNewOpen(open);
+  }
 
   async function logout() {
     try { await api.logout(); } catch { /* Session is cleared locally either way. */ }
@@ -41,16 +58,25 @@ export function DashboardPage() {
   }
 
   async function create(name: string, template: string) {
-    const response = await api.createProject(name, template);
-    navigate(`/project/${response.project.hash}`);
+    const requestGeneration = generation.current;
+    try {
+      const response = await api.createProject(name, template);
+      if (requestGeneration !== generation.current) return;
+      if (newVisible.current) navigate(`/project/${response.project.hash}`);
+      else void load();
+    } catch (reason) {
+      if (requestGeneration === generation.current && !newVisible.current) setError(reason instanceof Error ? reason.message : 'Could not create project');
+      throw reason;
+    }
   }
 
   async function importZip(file: File) {
     if (importing) return;
+    const requestGeneration = generation.current;
     setImporting(true); setError(null);
-    try { const response = await api.importProject(file); navigate(`/project/${response.project.hash}`); }
-    catch (reason) { setError(reason instanceof Error ? reason.message : 'Could not import ZIP'); }
-    finally { setImporting(false); }
+    try { const response = await api.importProject(file); if (requestGeneration === generation.current) navigate(`/project/${response.project.hash}`); }
+    catch (reason) { if (requestGeneration === generation.current) setError(reason instanceof Error ? reason.message : 'Could not import ZIP'); }
+    finally { if (requestGeneration === generation.current) setImporting(false); }
   }
 
   return <div className="dashboard-shell">
@@ -70,14 +96,14 @@ export function DashboardPage() {
         <div className="dashboard-intro__actions">
           <button className="secondary-button" type="button" onClick={() => importInput.current?.click()} disabled={importing} aria-busy={importing} aria-label={importing ? 'Importing ZIP…' : undefined}>{importing ? <PendingLabel>Importing ZIP…</PendingLabel> : <><Upload size={15}/>Import ZIP</>}</button>
           <input ref={importInput} hidden type="file" accept=".zip,application/zip" onChange={(event) => { const file = event.target.files?.[0]; if (file) void importZip(file); event.target.value = ''; }}/>
-          <button className="primary-button" type="button" onClick={() => setNewOpen(true)}><Plus size={15}/> New project</button>
+          <button className="primary-button" type="button" onClick={() => showNewProject(true)} aria-busy={creating && !newOpen} aria-label={creating && !newOpen ? 'Creating project…' : undefined} title={creating && !newOpen ? 'View creation progress' : undefined}>{creating && !newOpen ? <PendingLabel>Creating project…</PendingLabel> : <><Plus size={15}/> New project</>}</button>
         </div>
       </section>
       <InlineError message={error}/>
       <section className="project-section" aria-labelledby="projects-title">
         <header><h2 id="projects-title">All projects</h2><span>{projects.length.toString().padStart(2, '0')}</span></header>
         {loading ? <LoadingBlock label="Loading projects"/> : <div className="project-list">
-          {projects.length === 0 && <div className="dashboard-empty"><FileArchive size={28}/><h3>No projects yet.</h3><p>Begin with a clean template or import an existing ZIP archive.</p><button className="plain-button" type="button" onClick={() => setNewOpen(true)}>Create your first project <ArrowRight size={14}/></button></div>}
+          {projects.length === 0 && <div className="dashboard-empty"><FileArchive size={28}/><h3>No projects yet.</h3><p>Begin with a clean template or import an existing ZIP archive.</p><button className="plain-button" type="button" onClick={() => showNewProject(true)}>{creating ? 'View project creation' : 'Create your first project'} <ArrowRight size={14}/></button></div>}
           {projects.map((project) => <button key={project.hash} type="button" className="project-row" onClick={() => navigate(`/project/${project.hash}`)}>
             <span className="project-row__number" aria-hidden="true"><FileText size={21}/></span>
             <span className="project-row__main"><strong>{project.name}</strong><small>{project.entryFile}</small></span>
@@ -91,7 +117,7 @@ export function DashboardPage() {
       </section>
     </main>
     <footer className="dashboard-footer"><span>Overroot · Private open-source studio</span><a href="https://github.com/DebelToni/Overroot" target="_blank" rel="noreferrer">Source</a></footer>
-    <NewProjectDialog open={newOpen} templates={templates} onClose={() => setNewOpen(false)} onCreate={create}/>
+    <NewProjectDialog open={newOpen} templates={templates} onClose={() => showNewProject(false)} onCreate={create} onPendingChange={setCreating}/>
     {user?.isAdmin && <InvitesDialog open={invitesOpen} onClose={() => setInvitesOpen(false)} api={api}/>}
     {user && <AccountDialog open={accountOpen} onClose={() => setAccountOpen(false)} api={api} username={user.username}/>} 
   </div>;
