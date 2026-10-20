@@ -1,10 +1,12 @@
-import { ArrowRight } from 'lucide-react';
+import { ArrowRight, Github } from 'lucide-react';
 import { useLocation, useSearchParams } from 'react-router-dom';
 import { InlineError } from '../components/Feedback';
 import { Brand } from '../components/Brand';
+import { LandingManuscript } from '../components/LandingManuscript';
 import { ThemeControl } from '../components/ThemeControl';
 import { useTheme } from '../hooks/useTheme';
 import { useSession } from '../lib/session';
+import './AuthPage.css';
 
 export function AuthPage({ mode }: { mode: 'login' | 'register' }) {
   const { api } = useSession();
@@ -18,8 +20,13 @@ export function AuthPage({ mode }: { mode: 'login' | 'register' }) {
   const error = reason === 'invalid_attempt' ? 'This sign-in attempt expired or is invalid. Start a fresh sign-in to continue.'
     : reason === 'accounts_unavailable' ? 'Shared accounts could not complete sign-in. Please try again.' : null;
   return <div className="auth-shell">
-    <header className="auth-head"><Brand/><ThemeControl value={theme.preference} onChange={theme.setPreference}/></header>
-    <div className="accent-line"/>
+    <header className="auth-head">
+      <Brand/>
+      <div className="auth-head__actions">
+        <a className="auth-source" href="https://github.com/DebelToni/Overroot"><Github size={16} aria-hidden="true"/> Source code</a>
+        <ThemeControl value={theme.preference} onChange={theme.setPreference}/>
+      </div>
+    </header>
     <main className="auth-main">
       <section className="auth-story"><h1>Collaborative LaTeX</h1><p>Write, compile, and share LaTeX projects with people and agents.</p></section>
       <section className="auth-panel" aria-labelledby="auth-title">
@@ -28,6 +35,7 @@ export function AuthPage({ mode }: { mode: 'login' | 'register' }) {
         <InlineError message={error}/>
         <a className="primary-button primary-button--wide" href={api.url(startPath)}>{error ? 'Start fresh sign-in' : 'Continue to shared accounts'} <ArrowRight size={15}/></a>
       </section>
+      <div className="auth-example"><LandingManuscript/></div>
     </main>
   </div>;
 }
