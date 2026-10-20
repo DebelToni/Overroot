@@ -14,7 +14,7 @@ OVERROOT_IDENTITY_BASE_URL=http://127.0.0.1:18746
 
 Set `OVERROOT_IDENTITY_CLIENT_SECRET` privately with at least 32 characters, matching Space's confidential `overroot` client. Never pass it in argv or commit it. The fixed production callback is `https://overroot.toni.foo/api/v1/auth/callback`. An explicit HTTPS public origin and matching registered callback are required for other installations/test providers. Backchannel HTTP is allowed only to literal loopback; HTTPS is otherwise required. Requests carry the issuer Host, client key and no browser cookies, prohibit redirects, and time out after 3 seconds. Missing configuration or a client secret shorter than 32 characters prevents startup, with no password fallback.
 
-Before publishing, the parent must hold the existing updater, verify the provider and accounts route, supply private config, review exact-head hosted CI/CodeQL, and arrange the stopped-service migration below. This branch does not change installed host automation. `/health` proves only process liveness, not provider connectivity or migration readiness. Parent must review the existing external uptime probe for this release.
+Before merging or activating the consumer, the parent must hold the existing updater, verify the provider and accounts route, supply private config, review exact-head hosted CI/CodeQL, and arrange the stopped-service migration below. This branch does not change installed host automation. `/health` proves only process liveness, not provider connectivity or migration readiness. Parent must review the existing external uptime probe for this release.
 
 ## Explicit migration
 

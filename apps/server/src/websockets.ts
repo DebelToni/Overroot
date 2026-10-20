@@ -79,13 +79,6 @@ export class WebSocketGateway {
     this.closeMatching((ticket) => ticket.sessionHash === sessionHash, 'Session ended');
   }
 
-  closeOtherUserSessions(userId: string, exceptSessionHash: string): void {
-    this.closeMatching(
-      (ticket) => ticket.actor.type === 'user' && ticket.actor.id === userId && ticket.sessionHash !== exceptSessionHash,
-      'Session ended'
-    );
-  }
-
   closeUserProject(userId: string, projectId: string): void {
     this.closeMatching(
       (ticket) => ticket.actor.type === 'user' && ticket.actor.id === userId && ticket.projectId === projectId,
