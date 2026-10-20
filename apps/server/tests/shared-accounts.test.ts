@@ -48,7 +48,7 @@ function exchangeFor(challenge: string, subject = 'space-existing') {
 
 describe('central sign-in consumer', () => {
   it('uses PKCE, fixed redirect, single-use browser-bound state, and host-only cookies', async () => {
-    const attempt = await start('/#/project/opaque');
+    const attempt = await start('/#/project/opaque?file=sections%2Fintro.tex#source-line-12');
     expect(attempt.url.origin).toBe(provider.origin);
     expect(attempt.url.searchParams.get('redirect_uri')).toBe(provider.callback);
     expect(attempt.url.searchParams.get('code_challenge_method')).toBe('S256');
@@ -58,7 +58,7 @@ describe('central sign-in consumer', () => {
     expect(provider.exchange).not.toHaveBeenCalled();
     const response = await callback(state, attempt.cookie);
     expect(response.statusCode).toBe(302);
-    expect(response.headers.location).toBe('/#/project/opaque');
+    expect(response.headers.location).toBe('/#/project/opaque?file=sections%2Fintro.tex#source-line-12');
     const cookies = response.headers['set-cookie'] as string[];
     expect(cookies.every((value) => value.includes('HttpOnly') && value.includes('Secure') && value.includes('SameSite=Lax') && !value.includes('Domain='))).toBe(true);
     expect(response.body).not.toContain('or_session_');
@@ -230,9 +230,19 @@ describe('confidential provider backchannel', () => {
   function configured() {
     vi.stubEnv('OVERROOT_IDENTITY_ORIGIN', 'https://accounts.toni.foo');
     vi.stubEnv('OVERROOT_IDENTITY_BASE_URL', 'http://127.0.0.1:18746');
-    vi.stubEnv('OVERROOT_IDENTITY_CLIENT_SECRET', 'test-only-secret');
+    vi.stubEnv('OVERROOT_IDENTITY_CLIENT_SECRET', 'test-only-confidential-secret-32-characters');
     return new AccountsProvider('https://overroot.toni.foo');
   }
+  it.each([1, 16, 31])('rejects a configured confidential secret of %i characters', (length) => {
+    configured();
+    vi.stubEnv('OVERROOT_IDENTITY_CLIENT_SECRET', 'x'.repeat(length));
+    expect(() => new AccountsProvider('https://overroot.toni.foo')).toThrow('at least 32 characters');
+  });
+  it('accepts a 32-character confidential secret', () => {
+    configured();
+    vi.stubEnv('OVERROOT_IDENTITY_CLIENT_SECRET', 'x'.repeat(32));
+    expect(() => new AccountsProvider('https://overroot.toni.foo')).not.toThrow();
+  });
   it('sends the client key, issuer Host, exact redirect, verifier, timeout, and no browser cookie', async () => {
     const client = configured();
     const fetcher = vi.fn().mockResolvedValue(new Response(JSON.stringify(provider.grant())));
@@ -242,7 +252,7 @@ describe('confidential provider backchannel', () => {
     expect(url).toBe('http://127.0.0.1:18746/api/accounts/token');
     expect(init.redirect).toBe('error');
     expect(init.signal).toBeInstanceOf(AbortSignal);
-    expect(init.headers).toEqual({ 'Content-Type': 'application/json', 'X-Accounts-Client-Key': 'test-only-secret', Host: 'accounts.toni.foo' });
+    expect(init.headers).toEqual({ 'Content-Type': 'application/json', 'X-Accounts-Client-Key': 'test-only-confidential-secret-32-characters', Host: 'accounts.toni.foo' });
     expect(JSON.parse(init.body)).toEqual({ client_id: 'overroot', grant_type: 'authorization_code', code: 'code', code_verifier: 'verifier', redirect_uri: client.callback });
   });
   it('fails closed on a network timeout without clearing a local session', async () => {

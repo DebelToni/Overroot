@@ -27,3 +27,21 @@ it('never reflects unrecognized callback query text', () => {
   expect(screen.queryByText(/private-code|private-state|untrusted-text/)).toBeNull();
   expect(screen.getByRole('link', { name: /Continue to shared accounts/ })).toHaveAttribute('href', 'https://overroot.toni.foo/api/v1/auth/start');
 });
+
+it('passes a safe project target including query and fragment to auth/start', () => {
+  const returnTo = '/#/project/opaque?file=sections%2Fintro.tex#source-line-12';
+  render(<MemoryRouter initialEntries={[{ pathname: '/login', state: { returnTo } }]}><AuthPage mode="login"/></MemoryRouter>);
+  const href = screen.getByRole('link', { name: /Continue to shared accounts/ }).getAttribute('href')!;
+  const url = new URL(href);
+  expect(url.origin).toBe('https://overroot.toni.foo');
+  expect(url.pathname).toBe('/api/v1/auth/start');
+  expect(url.searchParams.get('returnTo')).toBe(returnTo);
+});
+it.each([
+  'https://evil.test/project/stolen', '//evil.test/project/stolen', '/\\evil.test',
+  '/api/v1/auth/callback', '/#/project/opaque\r\nLocation:evil', '/#/project/\\evil',
+  `/#/project/${'x'.repeat(2048)}`, null, 123, { pathname: '/project/opaque' }, '/#/'
+])('keeps the default sign-in link for an unsafe or default target: %j', (returnTo) => {
+  render(<MemoryRouter initialEntries={[{ pathname: '/login', state: { returnTo } }]}><AuthPage mode="login"/></MemoryRouter>);
+  expect(screen.getByRole('link', { name: /Continue to shared accounts/ })).toHaveAttribute('href', 'https://overroot.toni.foo/api/v1/auth/start');
+});

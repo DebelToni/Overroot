@@ -1,6 +1,6 @@
 import { RefreshCw, ServerOff } from 'lucide-react';
 import { lazy, Suspense, useCallback, useEffect, useState } from 'react';
-import { Navigate, Route, Routes } from 'react-router-dom';
+import { Navigate, Route, Routes, useLocation } from 'react-router-dom';
 import { Brand } from './components/Brand';
 import { LoadingBlock } from './components/Feedback';
 import { ApiError } from './lib/api';
@@ -35,6 +35,7 @@ export function App() {
 }
 
 function SessionGate() {
+  const location = useLocation();
   const { api, user, setUser, clearSession } = useSession();
   const [authError, setAuthError] = useState<string | null>(null);
   const [retry, setRetry] = useState(0);
@@ -55,8 +56,8 @@ function SessionGate() {
   return <Suspense fallback={<BootScreen label="Opening Overroot"/>}><Routes>
     <Route path="/login" element={user ? <Navigate to="/" replace/> : <AuthPage mode="login"/>}/>
     <Route path="/register" element={user ? <Navigate to="/" replace/> : <AuthPage mode="register"/>}/>
-    <Route path="/" element={user ? <DashboardPage/> : <Navigate to="/login" replace/>}/>
-    <Route path="/project/:hash" element={user ? <WorkspacePage/> : <Navigate to="/login" replace/>}/>
+    <Route path="/" element={user ? <DashboardPage/> : <Navigate to="/login" replace state={{ returnTo: `/#${location.pathname}${location.search}${location.hash}` }}/>}/>
+    <Route path="/project/:hash" element={user ? <WorkspacePage/> : <Navigate to="/login" replace state={{ returnTo: `/#${location.pathname}${location.search}${location.hash}` }}/>}/>
     <Route path="*" element={<Navigate to="/" replace/>}/>
   </Routes></Suspense>;
 }

@@ -24,6 +24,7 @@ export class AccountsProvider implements IdentityProvider {
     const origin = process.env.OVERROOT_IDENTITY_ORIGIN;
     const secret = process.env.OVERROOT_IDENTITY_CLIENT_SECRET;
     if (!origin || !secret) throw new Error('Shared account configuration is required; local password auth is disabled');
+    if (secret.length < 32) throw new Error('OVERROOT_IDENTITY_CLIENT_SECRET must contain at least 32 characters');
     const issuer = new URL(origin);
     const base = new URL(process.env.OVERROOT_IDENTITY_BASE_URL ?? origin);
     if (issuer.origin !== origin || issuer.protocol !== 'https:' || issuer.username || issuer.password ||

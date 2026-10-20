@@ -1,5 +1,5 @@
 import { ArrowRight } from 'lucide-react';
-import { useSearchParams } from 'react-router-dom';
+import { useLocation, useSearchParams } from 'react-router-dom';
 import { InlineError } from '../components/Feedback';
 import { Brand } from '../components/Brand';
 import { ThemeControl } from '../components/ThemeControl';
@@ -10,6 +10,10 @@ export function AuthPage({ mode }: { mode: 'login' | 'register' }) {
   const { api } = useSession();
   const theme = useTheme();
   const [params] = useSearchParams();
+  const { state } = useLocation();
+  const target: unknown = state?.returnTo;
+  const returnTo = typeof target === 'string' && target.length <= 2048 && target.startsWith('/#/') && !/[\\\r\n]/.test(target) ? target : '/#/';
+  const startPath = '/api/v1/auth/start' + (returnTo === '/#/' ? '' : `?returnTo=${encodeURIComponent(returnTo)}`);
   const reason = params.get('authError');
   const error = reason === 'invalid_attempt' ? 'This sign-in attempt expired or is invalid. Start a fresh sign-in to continue.'
     : reason === 'accounts_unavailable' ? 'Shared accounts could not complete sign-in. Please try again.' : null;
@@ -22,7 +26,7 @@ export function AuthPage({ mode }: { mode: 'login' | 'register' }) {
         <h2 id="auth-title">{mode === 'register' ? 'Create an account' : 'Sign in'}</h2>
         <p>Use your shared Space account. New accounts require administrator approval.</p>
         <InlineError message={error}/>
-        <a className="primary-button primary-button--wide" href={api.url('/api/v1/auth/start')}>{error ? 'Start fresh sign-in' : 'Continue to shared accounts'} <ArrowRight size={15}/></a>
+        <a className="primary-button primary-button--wide" href={api.url(startPath)}>{error ? 'Start fresh sign-in' : 'Continue to shared accounts'} <ArrowRight size={15}/></a>
       </section>
     </main>
   </div>;
