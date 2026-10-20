@@ -52,7 +52,7 @@
 
 .auth-panel h2 { font-size: 28px; font-weight: 600; line-height: 1.2; letter-spacing: -.035em; }
 .auth-panel > p { margin-top: 10px; color: var(--muted); font-size: 13px; line-height: 1.6; }
-.auth-panel > .primary-button { min-height: 46px; margin-top: 24px; }
+.auth-panel > .primary-button { min-height: 46px; margin-top: 24px; border-radius: 7px; text-decoration: none; }
 .auth-panel > .inline-message { margin-top: 20px; }
 .auth-panel > .primary-button svg { flex: 0 0 auto; }
 
