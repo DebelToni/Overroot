@@ -144,3 +144,19 @@ it('keeps import progress tied to the upload, then restores the action after an 
   await screen.findByText('Imported workspace');
   expect(harness.api.importProject).toHaveBeenCalledTimes(2);
 });
+
+it('exposes only an issuer-admin entry button for the preserved local admin affordance', async () => {
+  harness.user.isAdmin = true;
+  try {
+    render(<MemoryRouter><DashboardPage/></MemoryRouter>);
+    await screen.findByText('No projects yet.');
+    const link = screen.getByRole('link', { name: 'Admin' });
+    expect(link).toHaveAttribute('href', '/api/v1/auth/admin');
+    expect(screen.queryByText(/Invitations|Approve accounts/)).toBeNull();
+  } finally { harness.user.isAdmin = false; }
+});
+it('does not offer site administration to ordinary local users', async () => {
+  render(<MemoryRouter><DashboardPage/></MemoryRouter>);
+  await screen.findByText('No projects yet.');
+  expect(screen.queryByRole('link', { name: 'Admin' })).toBeNull();
+});

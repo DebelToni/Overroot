@@ -24,7 +24,7 @@
 
 Overroot serves its frontend, REST API, and collaborative WebSockets from one Node server on the DGX at `https://overroot.toni.foo`, through a dedicated named Cloudflare Tunnel. GitHub Actions checks changes before a host-side deployment timer can publish an immutable release. Docker is used only for isolated Tectonic compilation.
 
-Overroot and Space share approved accounts at `https://accounts.toni.foo`. Public signup requires account-admin approval. Questions about using or hosting Overroot are welcome in [GitHub Issues](https://github.com/DebelToni/Overroot/issues).
+Overroot and Space use site-owned accounts at `https://accounts.toni.foo`. Signup is immediate; access is requested and approved separately for each service. Questions about using or hosting Overroot are welcome in [GitHub Issues](https://github.com/DebelToni/Overroot/issues).
 
 Overroot is independent and unaffiliated with Overleaf or Underleaf.ai.
 
@@ -45,11 +45,11 @@ Overroot is independent and unaffiliated with Overleaf or Underleaf.ai.
 
 ### 1. Sign in with your shared account
 
-Select **Continue to shared accounts**. Existing Space passwords work at the central accounts origin only. New users can sign up there and wait for administrator approval for both apps. Overroot never asks for or stores that password.
+Select **Continue to shared accounts**. Existing Space passwords are preserved by the explicit site account import and used only at the central origin. New users sign up there, request Overroot access, and wait for service approval. Space access is independent. Overroot never asks for or stores that password.
 
 **Manage account** opens the central account controls. Signing out of Overroot revokes its app grant; central logout revokes grants derived from that identity session. A password change revokes other identity/app sessions. There is no password recovery, email delivery, or MFA in this flow.
 
-Approval does not share projects or grant Overroot administrator access. Existing users retain their local IDs and permissions through an operator-supplied mapping, described in [shared account migration](deploy/SHARED-ACCOUNTS.md).
+Service approval and registered roles do not share projects or change their owner/editor/viewer permissions. The preserved **Admin** button opens central `/admin`, which checks the configured owner and redirects to private, tailnet-only administration. Public account-admin data and mutation endpoints are unavailable, including to that owner. Existing users retain their local IDs and permissions through an operator-supplied mapping, described in [shared account migration](deploy/SHARED-ACCOUNTS.md).
 
 ### 2. Create and share a project
 
@@ -154,7 +154,7 @@ SQLite and generated runtime data live outside the source repository. Backup loc
 pnpm dev
 ```
 
-The HTTP Vite preview at http://localhost:5173 is suitable for UI work, but human sign-in requires a same-origin HTTPS setup with an exact callback registered by the provider. Configure `OVERROOT_PUBLIC_URL` for that HTTPS origin, proxy to Node preserving Host, and use the corresponding provider client registration. Do not disable Secure cookies or Origin checks for development. Tests inject a mocked identity provider; they do not require live Space endpoints.
+The HTTP Vite preview at http://localhost:5173 is suitable for UI work, but human sign-in requires a same-origin HTTPS setup with an exact callback registered by the provider. Configure `OVERROOT_PUBLIC_URL` for that HTTPS origin, proxy to Node preserving Host, and use the corresponding provider client registration. Do not disable Secure cookies or Origin checks for development. Auth fixtures inject a v2 identity provider; hosted transport tests use a real loopback HTTP receiver to verify issuer Host, confidential client binding, response bounds, no redirects and the absolute timeout. They do not require a live authority.
 
 Run every quality gate with:
 
@@ -166,7 +166,7 @@ This performs ESLint, strict TypeScript checks, backend/frontend tests, producti
 
 ## Security scope
 
-Overroot is designed for approved accounts with private project memberships. Human passwords belong exclusively to the shared authority. App cookie and agent secrets are stored as hashes; WebSocket tickets are short-lived and single-use. Human API access introspects the central grant on every request and returns 503 during provider outages. Live human sockets revalidate every 10 seconds with a 3-second backchannel timeout, giving a target revocation/outage window of at most 13 seconds under a responsive event loop. Known revocation closes with 1008; provider failures close with retryable 1013. Upgrade tickets also revalidate their grant and project permissions. ZIP extraction and project paths are bounded, CORS is allowlisted, and LaTeX compilation is isolated from the host.
+Overroot requires current service permission `use` plus explicit private project membership. Human passwords belong exclusively to the shared authority. App cookie and agent secrets are stored as hashes; WebSocket tickets are short-lived and single-use. Human API access introspects the subject-bound `overroot` service grant on every request and returns 503 during provider outages. Live human sockets revalidate every 10 seconds with a 3-second backchannel timeout, giving a target revocation/outage window of at most 13 seconds under a responsive event loop. Known revocation closes with 1008; provider failures close with retryable 1013. Upgrade tickets also revalidate their grant and project permissions. ZIP extraction and project paths are bounded, CORS is allowlisted, and LaTeX compilation is isolated from the host.
 
 The production frontend and API share one origin behind the dedicated Cloudflare Tunnel. If the host or its network is unavailable, the service is unavailable while SQLite data remains on the host.
 

@@ -83,10 +83,12 @@ export function registerAuthRoutes(app: FastifyInstance, context: AppContext): v
     return { users: users.map(publicUser) };
   });
 
-  app.get('/api/v1/admin/users', async (request) => {
+  app.get('/api/v1/auth/admin', async (request, reply) => {
     const actor = context.auth.requireUser(request);
-    if (!actor.isAdmin) throw new HttpError(403, 'Administrator access is required', 'admin_required');
-    return { users: context.db.all<UserRecord>('SELECT * FROM users ORDER BY created_at').map(publicUser) };
+    if (!actor.isAdmin) throw new HttpError(403, 'Local administrator entry required', 'admin_required');
+    // This is only a navigation affordance. The issuer independently requires
+    // its configured owner, then redirects to the private administration origin.
+    return reply.redirect(new URL('/admin', context.auth.identity.origin).toString());
   });
 
 }

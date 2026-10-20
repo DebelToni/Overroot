@@ -13,6 +13,7 @@ import { config } from './config.js';
 import type { AppContext } from './context.js';
 import { Database } from './database.js';
 import { AccountsProvider, type IdentityProvider } from './identity.js';
+import { INTERNAL_USERS_PATH, registerInternalAdminRoutes, requireInternalAdmin } from './internal-admin.js';
 import { HttpError } from './errors.js';
 import { openapi } from './openapi.js';
 import { ProjectStore } from './project-store.js';
@@ -33,7 +34,7 @@ export async function buildApp(options: BuildAppOptions = {}) {
   const app = Fastify({
     logger: options.logger === false ? false : {
       level: process.env.LOG_LEVEL ?? 'info',
-      redact: ['req.headers.authorization', 'req.headers.cookie', 'req.url', 'req.query', 'res.headers.location', 'res.headers["set-cookie"]', 'res.headers.authorization']
+      redact: ['req.headers.authorization', 'req.headers.cookie', 'req.headers["x-accounts-client-key"]', 'req.url', 'req.query', 'res.headers.location', 'res.headers["set-cookie"]', 'res.headers.authorization']
     },
     trustProxy: config.trustProxy,
     bodyLimit: 30 * 1024 * 1024,
@@ -73,6 +74,23 @@ export async function buildApp(options: BuildAppOptions = {}) {
     return reply.code(500).send({ error: { code: 'internal_error', message: 'Internal server error' } });
   });
 
+  app.addHook('onRequest', async (request, reply) => {
+    if (!request.url.startsWith('/api/') && !request.routeOptions.url?.startsWith('/api/')) return;
+    if (request.method === 'GET' && request.routeOptions.url === INTERNAL_USERS_PATH) {
+      requireInternalAdmin(request);
+      reply.header('Cache-Control', 'no-store');
+      return;
+    }
+    if (request.headers.host !== new URL(config.publicUrl).host) throw new HttpError(403, 'Host is not allowed', 'host_denied');
+    reply.header('Cache-Control', 'no-store');
+    const bearer = request.headers.authorization !== undefined;
+    if (!bearer && !['GET', 'HEAD', 'OPTIONS'].includes(request.method) && request.headers.origin !== config.publicUrl) {
+      throw new HttpError(403, 'Origin is not allowed', 'origin_denied');
+    }
+    // Login callbacks must work even when an old app grant is revoked or unavailable.
+    if (!['/api/v1/auth/start', '/api/v1/auth/callback', '/api/v1/auth/account', '/api/v1/status'].includes(request.url.split('?')[0]!)) await auth.prepare(request);
+  });
+
   await app.register(cors, {
     origin(origin, callback) {
       if (!origin || config.allowedOrigins.includes(origin)) callback(null, true);
@@ -86,18 +104,6 @@ export async function buildApp(options: BuildAppOptions = {}) {
   });
   await app.register(multipart, {
     limits: { files: 1, fileSize: 25 * 1024 * 1024, fields: 10 }
-  });
-
-  app.addHook('onRequest', async (request, reply) => {
-    if (!request.url.startsWith('/api/')) return;
-    if (request.headers.host !== new URL(config.publicUrl).host) throw new HttpError(403, 'Host is not allowed', 'host_denied');
-    reply.header('Cache-Control', 'no-store');
-    const bearer = request.headers.authorization !== undefined;
-    if (!bearer && !['GET', 'HEAD', 'OPTIONS'].includes(request.method) && request.headers.origin !== config.publicUrl) {
-      throw new HttpError(403, 'Origin is not allowed', 'origin_denied');
-    }
-    // Login callbacks must work even when an old app grant is revoked or unavailable.
-    if (!['/api/v1/auth/start', '/api/v1/auth/callback', '/api/v1/auth/account', '/api/v1/status'].includes(request.url.split('?')[0]!)) await auth.prepare(request);
   });
 
   app.addHook('onSend', async (_request, reply, payload) => {
@@ -116,6 +122,7 @@ export async function buildApp(options: BuildAppOptions = {}) {
     return reply.type('text/markdown').send(await readFile(path, 'utf8'));
   });
 
+  registerInternalAdminRoutes(app, context);
   registerAuthRoutes(app, context);
   registerProjectRoutes(app, context);
   registerFileRoutes(app, context);

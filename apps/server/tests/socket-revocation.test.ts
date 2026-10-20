@@ -34,8 +34,9 @@ function connect(url: string) {
   client = new WebSocket(url, { headers: { host: new URL(config.publicUrl).host, origin: config.publicUrl } });
   return client;
 }
-it.each(['revoked', 'outage', 'logged-out', 'membership-removed'] as const)('revalidates a ticket before upgrade: %s', async (mode) => {
+it.each(['revoked', 'outage', 'logged-out', 'membership-removed', 'no-use'] as const)('revalidates a ticket before upgrade: %s', async (mode) => {
   const grant = ticket();
+  if (mode === 'no-use') for (const grant of provider.grants.values()) grant.permissions = [];
   if (mode === 'revoked') provider.grants.clear();
   if (mode === 'outage') provider.outage = true;
   if (mode === 'membership-removed') built.context.db.run('DELETE FROM project_members');
@@ -48,13 +49,14 @@ it.each(['revoked', 'outage', 'logged-out', 'membership-removed'] as const)('rev
   });
   expect(response).toBe(mode === 'outage' ? 503 : 401);
 });
-it.each([['revoked', 1008], ['outage', 1013]] as const)('closes a live human socket on %s within the bounded interval', async (mode, code) => {
+it.each([['revoked', 1008], ['no-use', 1008], ['outage', 1013]] as const)('closes a live human socket on %s within the bounded interval', async (mode, code) => {
   const grant = ticket();
   vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] });
   const socket = connect(grant.url);
   await once(socket, 'open');
   const closed = once(socket, 'close');
   if (mode === 'revoked') provider.grants.clear();
+  else if (mode === 'no-use') for (const grant of provider.grants.values()) grant.permissions = [];
   else provider.outage = true;
   await vi.advanceTimersByTimeAsync(10_000);
   expect((await closed)[0]).toBe(code);
@@ -80,4 +82,19 @@ it('drains in-flight introspection before database teardown in preClose', async 
   finish({ active: false });
   await closing;
   expect(stopped).toBe(true);
+});
+
+it('keeps an admitted socket and local content permissions unchanged after a registered service role change', async () => {
+  const grant = ticket();
+  vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] });
+  const socket = connect(grant.url);
+  await once(socket, 'open');
+  const before = provider.calls;
+  for (const grant of provider.grants.values()) {
+    grant.role = 'registered-role';
+    grant.permissions = ['use', 'registered:feature'];
+  }
+  await vi.advanceTimersByTimeAsync(10_000);
+  expect(provider.calls).toBeGreaterThan(before);
+  expect(socket.readyState).toBe(WebSocket.OPEN);
 });

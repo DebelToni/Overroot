@@ -18,7 +18,7 @@ export const openapi = {
     title: 'Overroot Agent API',
     version: '0.1.0',
     description:
-      'Project-scoped, revision-safe REST access. Agents use a scoped Bearer token independently of shared human accounts. Humans use a host-only HttpOnly cookie after central authorization-code/PKCE sign-in. Every human API request introspects its central grant; outages return 503. Cookie-authenticated mutations require Origin matching the app origin. Send If-Match when mutating existing files.'
+      'Project-scoped, revision-safe REST access. Agents use a scoped Bearer token independently of shared human accounts. Humans use a host-only HttpOnly cookie after site-owned authorization-code/PKCE sign-in. Every human API request introspects its overroot service grant and requires live permission use; outages return 503. Service roles do not grant project membership or change content permissions. Cookie-authenticated mutations require Origin matching the app origin. Send If-Match when mutating existing files.'
   },
   externalDocs: {
     description: 'Agent guide',
@@ -36,6 +36,9 @@ export const openapi = {
     },
     '/api/v1/auth/callback': {
       get: { operationId: 'completeHumanSignIn', security: [], parameters: [parameter('state', 'query', true, { type: 'string' }), parameter('code', 'query', true, { type: 'string' })], responses: { '302': { description: 'Consumes browser-bound state, exchanges the single-use code with confidential client authentication, sets __Host-overroot_session, and redirects locally. Invalid/expired attempts redirect to /#/login?authError=invalid_attempt without exchanging a code. Provider exchange failures redirect to /#/login?authError=accounts_unavailable. These screens offer an explicit fresh-sign-in action. No browser bearer token.' }, '503': error('Identity migration required') } }
+    },
+    '/api/v1/auth/admin': {
+      get: { operationId: 'openSiteAdministration', security: [{ humanSession: [] }], responses: { '302': { description: 'Existing local admin navigation affordance only: redirect to issuer /admin, which independently checks its configured owner and redirects to private administration. No public admin data or mutations.' }, '401': error(), '403': error('Local admin affordance unavailable'), '503': error('Accounts unavailable') } }
     },
     '/api/v1/auth/account': {
       get: { operationId: 'openSharedAccount', security: [], responses: { '302': { description: 'Redirect to central account controls, signup and password settings' } } }
@@ -177,7 +180,7 @@ export const openapi = {
       bearerAuth: { type: 'http', scheme: 'bearer', bearerFormat: 'Overroot project agent password' }
     },
     schemas: {
-      UserEnvelope: { type: 'object', required: ['user'], properties: { user: { type: 'object', required: ['id', 'username', 'displayName', 'isAdmin', 'createdAt'], properties: { id: { type: 'string' }, username: { type: 'string' }, displayName: { type: 'string' }, isAdmin: { type: 'boolean', description: 'Overroot-local grant, never inferred from central approval' }, createdAt: { type: 'string' } } } } },
+      UserEnvelope: { type: 'object', required: ['user'], properties: { user: { type: 'object', required: ['id', 'username', 'displayName', 'isAdmin', 'createdAt'], properties: { id: { type: 'string' }, username: { type: 'string' }, displayName: { type: 'string' }, isAdmin: { type: 'boolean', description: 'Preserved local Admin-button visibility only; never central policy or project authority' }, createdAt: { type: 'string' } } } } },
       ErrorEnvelope: {
         type: 'object', required: ['error'], properties: {
           error: { type: 'object', required: ['code', 'message'], properties: { code: { type: 'string' }, message: { type: 'string' }, details: {} } }

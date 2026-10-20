@@ -24,7 +24,7 @@ export function AuthPage({ mode }: { mode: 'login' | 'register' }) {
       <section className="auth-story"><h1>Collaborative LaTeX</h1><p>Write, compile, and share LaTeX projects with people and agents.</p></section>
       <section className="auth-panel" aria-labelledby="auth-title">
         <h2 id="auth-title">{mode === 'register' ? 'Create an account' : 'Sign in'}</h2>
-        <p>Use your shared Space account. New accounts require administrator approval.</p>
+        <p>Use your site account. Request Overroot access from your account dashboard.</p>
         <InlineError message={error}/>
         <a className="primary-button primary-button--wide" href={api.url(startPath)}>{error ? 'Start fresh sign-in' : 'Continue to shared accounts'} <ArrowRight size={15}/></a>
       </section>

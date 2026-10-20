@@ -9,7 +9,7 @@ it.each(['login', 'register'] as const)('%s directs people to central sign-in wi
   const { container } = render(<MemoryRouter><AuthPage mode={mode}/></MemoryRouter>);
   expect(screen.getByRole('link', { name: /Continue to shared accounts/ })).toHaveAttribute('href', 'https://overroot.toni.foo/api/v1/auth/start');
   expect(container.querySelector('input')).toBeNull();
-  expect(screen.getByText(/administrator approval/)).toBeInTheDocument();
+  expect(screen.getByText(/Request Overroot access/)).toBeInTheDocument();
 });
 
 it.each([
