@@ -4,7 +4,7 @@ import { afterEach, beforeEach, expect, it, vi } from 'vitest';
 import { DashboardPage } from './DashboardPage';
 
 const harness = vi.hoisted(() => ({
-  api: { listProjects: vi.fn(), listTemplates: vi.fn(), importProject: vi.fn(), createProject: vi.fn() },
+  api: { listProjects: vi.fn(), listTemplates: vi.fn(), importProject: vi.fn(), createProject: vi.fn(), url: (path: string) => `https://overroot.toni.foo${path}` },
   user: { username: 'writer', displayName: 'Writer', isAdmin: false }
 }));
 vi.mock('../lib/session', () => ({ useSession: () => ({ api: harness.api, user: harness.user, clearSession: vi.fn() }) }));
