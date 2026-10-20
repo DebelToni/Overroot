@@ -1,15 +1,43 @@
-import { cleanup, render, screen } from '@testing-library/react';
+import { cleanup, fireEvent, render, screen } from '@testing-library/react';
 import { MemoryRouter } from 'react-router-dom';
 import { afterEach, expect, it, vi } from 'vitest';
 import { AuthPage } from './AuthPage';
 vi.mock('../lib/session', () => ({ useSession: () => ({ api: { url: (path: string) => `https://overroot.toni.foo${path}` } }) }));
 vi.mock('../hooks/useTheme', () => ({ useTheme: () => ({ preference: 'system', setPreference: vi.fn() }) }));
 afterEach(cleanup);
+it.each(['login', 'register'] as const)('keeps the %s shared-account return path while exploring modular sources', (mode) => {
+  const returnTo = '/#/project/opaque?file=sections%2Fintro.tex#source-line-12';
+  const { container } = render(<MemoryRouter initialEntries={[{ pathname: `/${mode}`, state: { returnTo } }]}><AuthPage mode={mode}/></MemoryRouter>);
+  const signIn = screen.getByRole('link', { name: /Continue to shared accounts/ });
+  const href = signIn.getAttribute('href');
+  expect(new URL(href!).searchParams.get('returnTo')).toBe(returnTo);
+  fireEvent.click(screen.getByRole('button', { name: 'Sources' }));
+  fireEvent.change(screen.getByRole('combobox', { name: 'Example source file' }), { target: { value: '1' } });
+  expect(screen.getByLabelText('sections/introduction.tex source')).toHaveTextContent('\\section{Introduction}');
+  fireEvent.click(screen.getByRole('button', { name: 'Paper' }));
+  expect(screen.getByRole('article', { name: 'Sample article' })).toBeInTheDocument();
+  expect(signIn).toHaveAttribute('href', href);
+  expect(container.querySelector('form, input')).toBeNull();
+  expect(screen.getByRole('heading', { name: 'Collaborative LaTeX', level: 1 })).toBeInTheDocument();
+});
 it.each(['login', 'register'] as const)('%s directs people to central sign-in without collecting passwords', (mode) => {
   const { container } = render(<MemoryRouter><AuthPage mode={mode}/></MemoryRouter>);
   expect(screen.getByRole('link', { name: /Continue to shared accounts/ })).toHaveAttribute('href', 'https://overroot.toni.foo/api/v1/auth/start');
   expect(container.querySelector('input')).toBeNull();
   expect(screen.getByText(/Request Overroot access/)).toBeInTheDocument();
+});
+
+it('keeps expired-attempt recovery and the safe project target while exploring the example', () => {
+  const returnTo = '/#/project/opaque?file=sections%2Fintro.tex#source-line-12';
+  render(<MemoryRouter initialEntries={[{ pathname: '/login', search: '?authError=invalid_attempt&code=private-code&state=private-state', state: { returnTo } }]}><AuthPage mode="login"/></MemoryRouter>);
+  fireEvent.click(screen.getByRole('button', { name: 'Sources' }));
+  fireEvent.change(screen.getByRole('combobox', { name: 'Example source file' }), { target: { value: '2' } });
+  expect(screen.getByRole('alert')).toHaveTextContent('This sign-in attempt expired or is invalid. Start a fresh sign-in to continue.');
+  const href = new URL(screen.getByRole('link', { name: /Start fresh sign-in/ }).getAttribute('href')!);
+  expect(href.origin).toBe('https://overroot.toni.foo');
+  expect(href.pathname).toBe('/api/v1/auth/start');
+  expect([...href.searchParams]).toEqual([['returnTo', returnTo]]);
+  expect(screen.queryByText(/private-code|private-state/)).toBeNull();
 });
 
 it.each([
