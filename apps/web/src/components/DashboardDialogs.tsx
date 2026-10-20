@@ -63,7 +63,7 @@ export function NewProjectDialog({
 
 export function AccountDialog({ open, onClose, api, username }: { open: boolean; onClose: () => void; api: ApiClient; username: string }) {
   return <Modal open={open} onClose={onClose} title={username} eyebrow="Account" size="small">
-    <p className="dialog-copy">Your account and password are shared with Space. Project access is managed in Overroot.</p>
+    <p className="dialog-copy">Your account and service access are managed centrally. Project sharing stays in Overroot.</p>
     <div className="form-actions"><button className="plain-button" type="button" onClick={onClose}>Close</button><a className="primary-button" href={api.url('/api/v1/auth/account')}><KeyRound size={14}/> Manage account</a></div>
   </Modal>;
 }

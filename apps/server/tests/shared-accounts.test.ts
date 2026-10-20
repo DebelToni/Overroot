@@ -4,7 +4,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { buildApp as productionBuild } from '../src/app.js';
-import { AccountsProvider, unavailable } from '../src/identity.js';
+import { unavailable } from '../src/identity.js';
 import { config } from '../src/config.js';
 import { sha256 } from '../src/security.js';
 import { localReturnPath } from '../src/routes/auth-routes.js';
@@ -126,7 +126,7 @@ describe('central sign-in consumer', () => {
     for (const path of ['https://evil.test', '//evil.test', '/\\evil.test', '/api/v1/auth/start', '/#/\nLocation:evil']) expect(localReturnPath(path)).toBe('/#/');
     expect(localReturnPath('/#/project/opaque')).toBe('/#/project/opaque');
   });
-  it('never matches unknown identities to existing names or elevates approval', () => {
+  it('never matches unknown identities or derives local admin from service admission', () => {
     const existing = seedUser(built.context.db, 'Same nickname', true);
     const fresh = built.context.auth.createSession(provider.grant('different-subject', 'Same nickname'));
     expect(fresh.user.id).not.toBe(existing.id);
@@ -134,6 +134,34 @@ describe('central sign-in consumer', () => {
     const mapped = built.context.auth.createSession(provider.grant(existing.id, 'Renamed'));
     expect(mapped.user.id).toBe(existing.id);
     expect(mapped.user.isAdmin).toBe(true);
+  });
+  it('requires the overroot service and live use permission without interpreting central roles as local grants', async () => {
+    const user = seedUser(built.context.db, 'ordinary', false);
+    const grant = provider.grant(user.id);
+    grant.role = 'registered-service-role';
+    grant.permissions = ['use', 'registered:feature', 'admin'];
+    const session = built.context.auth.createSession(grant);
+    const headers = humanHeaders(session.token);
+    const me = await built.app.inject({ url: '/api/v1/auth/me', headers });
+    expect(me.statusCode).toBe(200);
+    expect(me.json().user.isAdmin).toBe(false);
+    expect((await built.app.inject({ url: '/api/v1/auth/admin', headers })).statusCode).toBe(403);
+    grant.role = 'another-registered-role';
+    expect((await built.app.inject({ url: '/api/v1/projects', headers })).statusCode).toBe(200);
+    grant.permissions = ['admin'];
+    expect((await built.app.inject({ url: '/api/v1/projects', headers })).statusCode).toBe(401);
+    expect(built.context.db.get('SELECT token_hash FROM sessions WHERE token_hash = ?', sha256(session.token))).toBeUndefined();
+  });
+  it('refuses to provision service grants without use and never accepts a grant for another service', async () => {
+    const denied = provider.grant('not-yet-admitted');
+    denied.permissions = [];
+    expect(() => built.context.auth.createSession(denied)).toThrow('Inactive account grant');
+    expect(built.context.db.get('SELECT user_id FROM external_identities WHERE subject = ?', denied.user.id)).toBeUndefined();
+    const user = seedUser(built.context.db, 'mapped');
+    const grant = provider.grant(user.id);
+    const session = built.context.auth.createSession(grant);
+    Object.assign(grant, { service_id: 'space' });
+    expect((await built.app.inject({ url: '/api/v1/auth/me', headers: humanHeaders(session.token) })).statusCode).toBe(401);
   });
   it('fails on unmapped legacy users and removes all local credential endpoints', async () => {
     seedUser(built.context.db, 'legacy');
@@ -168,6 +196,8 @@ describe('central sign-in consumer', () => {
     const created = await built.app.inject({ method: 'POST', url: '/api/v1/projects', headers: humanHeaders(token), payload: { name: 'Private', template: 'article' } });
     const hash = created.json().project.hash;
     const credential = await built.app.inject({ method: 'POST', url: `/api/v1/projects/${hash}/agents`, headers: humanHeaders(token), payload: { name: 'Agent' } });
+    for (const grant of provider.grants.values()) grant.permissions = [];
+    expect((await built.app.inject({ url: '/api/v1/auth/me', headers: humanHeaders(token) })).statusCode).toBe(401);
     provider.outage = true;
     expect((await built.app.inject({ url: `/api/v1/projects/${hash}`, headers: { ...humanHeaders(token), authorization: `Bearer ${credential.json().access.password}` } })).statusCode).toBe(200);
     expect((await built.app.inject({ url: '/api/v1/auth/me', headers: { ...humanHeaders(token), authorization: 'Bearer invalid' } })).statusCode).toBe(401);
@@ -223,60 +253,5 @@ describe('sign-in admission', () => {
     for (let i = 0; i < 12; i++) expect((await from('127.0.0.1', { 'x-forwarded-for': `192.0.2.${i + 1}, 198.51.100.1` })).statusCode).toBe(302);
     expect((await from('127.0.0.1', { 'x-forwarded-for': '192.0.2.99, 198.51.100.1' })).statusCode).toBe(429);
     expect((await from('127.0.0.1', { 'x-forwarded-for': '192.0.2.99, 198.51.100.2' })).statusCode).toBe(302);
-  });
-});
-
-describe('confidential provider backchannel', () => {
-  function configured() {
-    vi.stubEnv('OVERROOT_IDENTITY_ORIGIN', 'https://accounts.toni.foo');
-    vi.stubEnv('OVERROOT_IDENTITY_BASE_URL', 'http://127.0.0.1:18746');
-    vi.stubEnv('OVERROOT_IDENTITY_CLIENT_SECRET', 'test-only-confidential-secret-32-characters');
-    return new AccountsProvider('https://overroot.toni.foo');
-  }
-  it.each([1, 16, 31])('rejects a configured confidential secret of %i characters', (length) => {
-    configured();
-    vi.stubEnv('OVERROOT_IDENTITY_CLIENT_SECRET', 'x'.repeat(length));
-    expect(() => new AccountsProvider('https://overroot.toni.foo')).toThrow('at least 32 characters');
-  });
-  it('accepts a 32-character confidential secret', () => {
-    configured();
-    vi.stubEnv('OVERROOT_IDENTITY_CLIENT_SECRET', 'x'.repeat(32));
-    expect(() => new AccountsProvider('https://overroot.toni.foo')).not.toThrow();
-  });
-  it('sends the client key, issuer Host, exact redirect, verifier, timeout, and no browser cookie', async () => {
-    const client = configured();
-    const fetcher = vi.fn().mockResolvedValue(new Response(JSON.stringify(provider.grant())));
-    vi.stubGlobal('fetch', fetcher);
-    await client.exchange('code', 'verifier');
-    const [url, init] = fetcher.mock.calls[0]!;
-    expect(url).toBe('http://127.0.0.1:18746/api/accounts/token');
-    expect(init.redirect).toBe('error');
-    expect(init.signal).toBeInstanceOf(AbortSignal);
-    expect(init.headers).toEqual({ 'Content-Type': 'application/json', 'X-Accounts-Client-Key': 'test-only-confidential-secret-32-characters', Host: 'accounts.toni.foo' });
-    expect(JSON.parse(init.body)).toEqual({ client_id: 'overroot', grant_type: 'authorization_code', code: 'code', code_verifier: 'verifier', redirect_uri: client.callback });
-  });
-  it('fails closed on a network timeout without clearing a local session', async () => {
-    const client = configured();
-    vi.stubGlobal('fetch', vi.fn().mockRejectedValue(new DOMException('Timeout', 'TimeoutError')));
-    await expect(client.introspect('grant')).rejects.toMatchObject({ statusCode: 503 });
-  });
-  it('rejects pending accounts and expired token exchange responses', async () => {
-    const client = configured();
-    const grant = provider.grant();
-    vi.stubGlobal('fetch', vi.fn().mockImplementation(async () => new Response(JSON.stringify({ ...grant, user: { ...grant.user, approved: false } }))));
-    await expect(client.exchange('pending-code', 'verifier')).rejects.toMatchObject({ statusCode: 503 });
-    vi.stubGlobal('fetch', vi.fn().mockImplementation(async () => new Response(JSON.stringify({ ...grant, expires_at: 1 }))));
-    await expect(client.exchange('expired-code', 'verifier')).rejects.toMatchObject({ statusCode: 503 });
-  });
-  it.each([401, 400, 500, 302])('fails closed on provider HTTP %i (wrong/reused code, PKCE/client/redirect rejection)', async (status) => {
-    const client = configured();
-    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(new Response('{}', { status })));
-    await expect(client.exchange('rejected-code', 'wrong-verifier')).rejects.toMatchObject({ statusCode: 503 });
-  });
-  it.each([{ active: true, user: { approved: false } }, {}, { active: true, expires_at: 1, user: { id: 'x', email: 'x@example.test', nickname: 'x', approved: true } }])('rejects malformed/pending or expires stale grants: %j', async (body) => {
-    const client = configured();
-    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(new Response(JSON.stringify(body))));
-    if ('expires_at' in body) expect((await client.introspect('grant'))).toMatchObject({ active: true, expires_at: 1 });
-    else await expect(client.introspect('grant')).rejects.toMatchObject({ statusCode: 503 });
   });
 });

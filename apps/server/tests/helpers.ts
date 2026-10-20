@@ -15,7 +15,7 @@ export class MockIdentity implements IdentityProvider {
   outage = false;
   calls = 0;
   grant(subject: string = randomUUID(), nickname = 'Member'): IdentityGrant {
-    const grant = { session_id: randomUUID(), expires_at: Math.floor(Date.now() / 1000) + 3600, user: { id: subject, nickname, email: 'member@example.test', approved: true as const } };
+    const grant: IdentityGrant = { service_id: 'overroot', role: 'member', permissions: ['use'], session_id: randomUUID(), expires_at: Math.floor(Date.now() / 1000) + 3600, user: { id: subject, nickname, email: 'member@example.test', approved: true as const } };
     this.grants.set(grant.session_id, grant);
     return grant;
   }
@@ -29,7 +29,7 @@ export class MockIdentity implements IdentityProvider {
     this.calls++;
     if (this.outage) throw unavailable();
     const grant = this.grants.get(id);
-    return grant ? { active: true, expires_at: grant.expires_at, user: grant.user } : { active: false };
+    return grant ? { active: true, expires_at: grant.expires_at, service_id: grant.service_id, role: grant.role, permissions: grant.permissions, user: grant.user } : { active: false };
   }
   async revoke(id: string): Promise<void> {
     if (this.outage) throw unavailable();

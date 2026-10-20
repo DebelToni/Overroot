@@ -1,9 +1,17 @@
+import { request as httpRequest } from 'node:http';
+import { request as httpsRequest } from 'node:https';
 import { z } from 'zod';
 import { HttpError } from './errors.js';
 
-const userSchema = z.object({ id: z.string().min(1).max(256), email: z.email(), nickname: z.string().min(1).max(256), approved: z.literal(true) });
-const grantSchema = z.object({ session_id: z.string().min(1).max(512), expires_at: z.number().int().positive(), user: userSchema });
-const introspectionSchema = z.discriminatedUnion('active', [z.object({ active: z.literal(false) }), z.object({ active: z.literal(true), expires_at: z.number().int().positive(), user: userSchema })]);
+const userSchema = z.object({ id: z.string().min(1).max(256), email: z.email().max(254), nickname: z.string().min(1).max(256), approved: z.literal(true) });
+const policyKey = z.string().min(1).max(64);
+const serviceFields = {
+  service_id: z.literal('overroot'),
+  role: policyKey,
+  permissions: z.array(policyKey).max(64)
+};
+const grantSchema = z.object({ session_id: z.string().min(1).max(512), expires_at: z.number().int().positive(), ...serviceFields, user: userSchema });
+const introspectionSchema = z.discriminatedUnion('active', [z.object({ active: z.literal(false) }), z.object({ active: z.literal(true), expires_at: z.number().int().positive(), ...serviceFields, user: userSchema })]);
 export type IdentityGrant = z.infer<typeof grantSchema>;
 export type Introspection = z.infer<typeof introspectionSchema>;
 export interface IdentityProvider {
@@ -23,10 +31,11 @@ export class AccountsProvider implements IdentityProvider {
   constructor(publicUrl: string) {
     const origin = process.env.OVERROOT_IDENTITY_ORIGIN;
     const secret = process.env.OVERROOT_IDENTITY_CLIENT_SECRET;
-    if (!origin || !secret) throw new Error('Shared account configuration is required; local password auth is disabled');
+    const backchannel = process.env.OVERROOT_IDENTITY_BASE_URL;
+    if (!origin || !secret || !backchannel) throw new Error('Shared account configuration is required; local password auth is disabled');
     if (secret.length < 32) throw new Error('OVERROOT_IDENTITY_CLIENT_SECRET must contain at least 32 characters');
     const issuer = new URL(origin);
-    const base = new URL(process.env.OVERROOT_IDENTITY_BASE_URL ?? origin);
+    const base = new URL(backchannel);
     if (issuer.origin !== origin || issuer.protocol !== 'https:' || issuer.username || issuer.password ||
         base.username || base.password || base.pathname !== '/' || base.search || base.hash ||
         !(base.protocol === 'https:' || (base.protocol === 'http:' && ['127.0.0.1', '[::1]'].includes(base.hostname)))) {
@@ -40,33 +49,43 @@ export class AccountsProvider implements IdentityProvider {
     this.secret = secret;
   }
 
-  private async call(endpoint: string, input: Record<string, string>): Promise<unknown> {
-    try {
-      const response = await fetch(`${this.base}/api/accounts/${endpoint}`, {
-        method: 'POST', redirect: 'error', signal: AbortSignal.timeout(3000),
-        headers: { 'Content-Type': 'application/json', 'X-Accounts-Client-Key': this.secret, Host: new URL(this.origin).host },
-        body: JSON.stringify({ client_id: 'overroot', ...input })
-      });
-      if (!response.ok) throw new Error('Identity provider rejected request');
-      // Bound even a malformed provider response, without buffering an unlimited body.
-      const reader = response.body?.getReader();
-      if (!reader) throw new Error('Empty identity response');
-      let body = '';
-      let size = 0;
-      const decoder = new TextDecoder();
-      try {
-        while (true) {
-          const part = await reader.read();
-          if (part.done) break;
-          size += part.value.length;
-          if (size > 16_384) throw new Error('Oversized identity response');
-          body += decoder.decode(part.value, { stream: true });
+  private call(endpoint: string, input: Record<string, string>): Promise<unknown> {
+    const url = new URL(`/api/accounts/${endpoint}`, this.base);
+    const request = url.protocol === 'https:' ? httpsRequest : httpRequest;
+    const body = Buffer.from(JSON.stringify({ client_id: 'overroot', ...input }));
+    // Native request preserves the issuer Host on a literal-loopback connection.
+    // No redirect handling, browser cookies, WAN fallback or fetch Host rewriting.
+    return new Promise((resolve, reject) => {
+      const req = request(url, {
+        method: 'POST', signal: AbortSignal.timeout(3000), maxHeaderSize: 16_384,
+        headers: {
+          Host: new URL(this.origin).host, 'X-Accounts-Client-Key': this.secret,
+          'Content-Type': 'application/json', 'Content-Length': body.length, Accept: 'application/json'
         }
-        return JSON.parse(body + decoder.decode());
-      } finally { await reader.cancel(); }
-    } catch {
-      throw unavailable();
-    }
+      }, (response) => {
+        response.once('error', () => reject(unavailable()));
+        response.once('aborted', () => reject(unavailable()));
+        if (response.statusCode !== 200) {
+          response.destroy();
+          reject(unavailable());
+          return;
+        }
+        let size = 0;
+        const chunks: Buffer[] = [];
+        response.on('data', (chunk: Buffer) => {
+          size += chunk.length;
+          if (size > 16_384) {
+            req.destroy(); response.destroy(); reject(unavailable());
+          } else chunks.push(chunk);
+        });
+        response.once('end', () => {
+          try { resolve(JSON.parse(Buffer.concat(chunks).toString('utf8'))); }
+          catch { reject(unavailable()); }
+        });
+      });
+      req.once('error', () => reject(unavailable()));
+      req.end(body);
+    }).catch(() => { throw unavailable(); });
   }
 
   async exchange(code: string, verifier: string): Promise<IdentityGrant> {

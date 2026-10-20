@@ -35,7 +35,7 @@ export class AuthService {
 
   createSession(grant: IdentityGrant): { token: string; user: PublicUser; maxAge: number } {
     this.assertMigrated();
-    if (!grant.user.approved || grant.expires_at * 1000 <= Date.now()) throw new HttpError(401, 'Inactive account grant', 'inactive_grant');
+    if (grant.service_id !== 'overroot' || !grant.permissions.includes('use') || !grant.user.approved || grant.expires_at * 1000 <= Date.now()) throw new HttpError(401, 'Inactive account grant', 'inactive_grant');
     return this.db.transaction(() => {
       let user = this.db.get<UserRecord>('SELECT u.* FROM users u JOIN external_identities e ON e.user_id = u.id WHERE e.subject = ?', grant.user.id);
       if (!user) {
@@ -56,7 +56,7 @@ export class AuthService {
     const row = this.db.get<SessionRow>(`SELECT u.*, s.central_session_id, s.expires_at, e.subject FROM sessions s JOIN users u ON u.id = s.user_id JOIN external_identities e ON e.user_id = u.id WHERE s.token_hash = ?`, sessionHash);
     if (!row?.central_session_id || row.expires_at <= new Date().toISOString()) return null;
     const grant = await this.identity.introspect(row.central_session_id);
-    if (!grant.active || !grant.user.approved || grant.user.id !== row.subject || grant.expires_at * 1000 <= Date.now()) {
+    if (!grant.active || grant.service_id !== 'overroot' || !grant.permissions.includes('use') || !grant.user.approved || grant.user.id !== row.subject || grant.expires_at * 1000 <= Date.now()) {
       this.db.run('DELETE FROM sessions WHERE token_hash = ?', sessionHash);
       return null;
     }

@@ -1,4 +1,4 @@
-import { ArrowRight, FileArchive, FileText, LogOut, Plus, Upload } from 'lucide-react';
+import { ArrowRight, FileArchive, FileText, LogOut, Plus, Settings2, Upload } from 'lucide-react';
 import { useEffect, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Brand } from '../components/Brand';
@@ -83,7 +83,8 @@ export function DashboardPage() {
       <Brand subtitle="Collaborative LaTeX studio"/>
       <div className="dashboard-head__actions">
         <ThemeControl value={theme.preference} onChange={theme.setPreference}/>
-        <button type="button" className="user-chip" aria-label={`Account settings for ${user?.displayName}`} onClick={() => setAccountOpen(true)}><span className="user-chip__details"><b>{user?.displayName}</b><small>{user?.isAdmin ? 'Admin' : 'Member'}</small></span><span className="user-chip__initials" aria-hidden="true">{initials(user?.displayName ?? '')}</span></button>
+        <button type="button" className="user-chip" aria-label={`Account settings for ${user?.displayName}`} onClick={() => setAccountOpen(true)}><span className="user-chip__details"><b>{user?.displayName}</b></span><span className="user-chip__initials" aria-hidden="true">{initials(user?.displayName ?? '')}</span></button>
+        {user?.isAdmin && <a className="plain-button" href="/api/v1/auth/admin"><Settings2 size={14}/> Admin</a>}
         <button className="icon-button" type="button" onClick={() => void logout()} aria-label="Log out" title="Log out"><LogOut size={16}/></button>
       </div>
     </header>
