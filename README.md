@@ -2,7 +2,7 @@
 
 # Overroot
 
-**A private, invite-only collaborative LaTeX studio for people and software agents.**
+**A private collaborative LaTeX studio for people and software agents.**
 
 [Hosted app](https://overroot.toni.foo) · [Agent guide](https://overroot.toni.foo/agent-guide.md) · [Questions / chat](https://github.com/DebelToni/Overroot/issues/new)
 
@@ -24,7 +24,7 @@
 
 Overroot serves its frontend, REST API, and collaborative WebSockets from one Node server on the DGX at `https://overroot.toni.foo`, through a dedicated named Cloudflare Tunnel. GitHub Actions checks changes before a host-side deployment timer can publish an immutable release. Docker is used only for isolated Tectonic compilation.
 
-Overroot is private and accepts new members through single-use invitation links. Questions about using or hosting Overroot are welcome in [GitHub Issues](https://github.com/DebelToni/Overroot/issues).
+Overroot and Space share approved accounts at `https://accounts.toni.foo`. Public signup requires account-admin approval. Questions about using or hosting Overroot are welcome in [GitHub Issues](https://github.com/DebelToni/Overroot/issues).
 
 Overroot is independent and unaffiliated with Overleaf or Underleaf.ai.
 
@@ -43,23 +43,20 @@ Overroot is independent and unaffiliated with Overleaf or Underleaf.ai.
 
 ## Using the hosted instance
 
-### 1. Register with an invitation
+### 1. Sign in with your shared account
 
-An administrator opens **Invitations**, selects **New invitation**, and sends the generated link privately.
+Select **Continue to shared accounts**. Existing Space passwords work at the central accounts origin only. New users can sign up there and wait for administrator approval for both apps. Overroot never asks for or stores that password.
 
-- Each invitation can register one account.
-- The link expires after seven days when created through the interface.
-- Registration needs only a username and password.
-- Registering does not automatically reveal or share any project.
+**Manage account** opens the central account controls. Signing out of Overroot revokes its app grant; central logout revokes grants derived from that identity session. A password change revokes other identity/app sessions. There is no password recovery, email delivery, or MFA in this flow.
 
-Create a separate invitation for every person. If a link is consumed by the wrong person, create a replacement rather than sharing an account.
+Approval does not share projects or grant Overroot administrator access. Existing users retain their local IDs and permissions through an operator-supplied mapping, described in [shared account migration](deploy/SHARED-ACCOUNTS.md).
 
 ### 2. Create and share a project
 
 1. Select **New project** on the dashboard.
 2. Name it and choose a starting template.
 3. Open **Share** inside the project.
-4. Add the collaborator's exact registered username as **Editor** or **Viewer**.
+4. Add the collaborator's exact Overroot handle (shown in their account control) as **Editor** or **Viewer**.
 5. The collaborator refreshes their dashboard and opens the shared project.
 
 Editors can work in the same text file simultaneously. Presence appears in the header, changes synchronize live, and **History** records who produced each saved revision.
@@ -157,7 +154,7 @@ SQLite and generated runtime data live outside the source repository. Backup loc
 pnpm dev
 ```
 
-Open http://localhost:5173. The development frontend connects directly to http://127.0.0.1:4317.
+The HTTP Vite preview at http://localhost:5173 is suitable for UI work, but human sign-in requires a same-origin HTTPS setup with an exact callback registered by the provider. Configure `OVERROOT_PUBLIC_URL` for that HTTPS origin, proxy to Node preserving Host, and use the corresponding provider client registration. Do not disable Secure cookies or Origin checks for development. Tests inject a mocked identity provider; they do not require live Space endpoints.
 
 Run every quality gate with:
 
@@ -169,7 +166,7 @@ This performs ESLint, strict TypeScript checks, backend/frontend tests, producti
 
 ## Security scope
 
-Overroot is designed for a small trusted group rather than public registration. Passwords use scrypt; session, invitation, WebSocket, and agent secrets are stored as hashes or short-lived one-use tickets. ZIP extraction and project paths are bounded, CORS is allowlisted, and LaTeX compilation is isolated from the host.
+Overroot is designed for approved accounts with private project memberships. Human passwords belong exclusively to the shared authority. App cookie and agent secrets are stored as hashes; WebSocket tickets are short-lived and single-use. Human API access introspects the central grant on every request and returns 503 during provider outages. Live human sockets revalidate every 10 seconds with a 3-second backchannel timeout, giving a target revocation/outage window of at most 13 seconds under a responsive event loop. Known revocation closes with 1008; provider failures close with retryable 1013. Upgrade tickets also revalidate their grant and project permissions. ZIP extraction and project paths are bounded, CORS is allowlisted, and LaTeX compilation is isolated from the host.
 
 The production frontend and API share one origin behind the dedicated Cloudflare Tunnel. If the host or its network is unavailable, the service is unavailable while SQLite data remains on the host.
 

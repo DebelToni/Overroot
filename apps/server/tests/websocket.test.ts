@@ -1,3 +1,4 @@
+import { seedUser, login, humanHeaders } from './helpers.js';
 import { mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -8,7 +9,7 @@ import WebSocket from 'ws';
 import * as syncProtocol from 'y-protocols/sync';
 import * as Y from 'yjs';
 import { describe, expect, it } from 'vitest';
-import { buildApp } from '../src/app.js';
+import { buildApp } from './helpers.js';
 import { config } from '../src/config.js';
 
 const MESSAGE_SYNC = 0;
@@ -22,9 +23,9 @@ const MESSAGE_FLUSH_ACK = 3;
     let client: YClient | undefined;
     let undo: Y.UndoManager | undefined;
     try {
-      await context.auth.createUser('writer', 'writer-password-123', true);
-      const login = await app.inject({ method: 'POST', url: '/api/v1/auth/login', payload: { username: 'writer', password: 'writer-password-123' } });
-      const headers = { authorization: `Bearer ${login.json().token}` };
+      const user = seedUser(context.db, 'writer', true);
+      const sessionToken = login(context.auth, user);
+      const headers = humanHeaders(sessionToken);
       const created = await app.inject({ method: 'POST', url: '/api/v1/projects', headers, payload: { name: 'REST undo', template: 'article' } });
       const hash = created.json().project.hash as string;
       const files = await app.inject({ method: 'GET', url: `/api/v1/projects/${hash}/files`, headers });
@@ -63,10 +64,10 @@ const MESSAGE_FLUSH_ACK = 3;
     config.fakeCompiler = true;
     const { app, context } = await buildApp({ databasePath: join(dir, 'state.sqlite3'), logger: false });
     try {
-      await context.auth.createUser('editor', 'editor-password-123', true);
-      const login = await app.inject({ method: 'POST', url: '/api/v1/auth/login', payload: { username: 'editor', password: 'editor-password-123' } });
-      const token = login.json().token as string;
-      const headers = { authorization: `Bearer ${token}` };
+      const user = seedUser(context.db, 'editor', true);
+      const sessionToken = login(context.auth, user);
+      const token = sessionToken as string;
+      const headers = humanHeaders(token);
       const created = await app.inject({ method: 'POST', url: '/api/v1/projects', headers, payload: { name: 'Live paper', template: 'article' } });
       const hash = created.json().project.hash as string;
       const tree = await app.inject({ method: 'GET', url: `/api/v1/projects/${hash}/files`, headers });
@@ -123,7 +124,7 @@ class YClient {
 
   constructor(url: string) {
     this.synced = new Promise((resolve) => { this.resolveSynced = resolve; });
-    this.socket = new WebSocket(url);
+    this.socket = new WebSocket(url, { headers: { host: new URL(config.publicUrl).host, origin: config.publicUrl } });
     this.socket.binaryType = 'arraybuffer';
     this.doc.on('update', (update: Uint8Array, origin: unknown) => {
       if (origin === this.socket || this.socket.readyState !== WebSocket.OPEN) return;

@@ -27,7 +27,6 @@ export class ApiError extends Error {
 export class ApiClient {
   constructor(
     readonly baseUrl: string,
-    private readonly getToken: () => string | null,
     private readonly onUnauthorized?: () => void,
     private readonly onNetworkError?: () => void
   ) {}
@@ -35,15 +34,13 @@ export class ApiClient {
   async request<T>(path: string, init: RequestInit = {}): Promise<T> {
     const headers = new Headers(init.headers);
     headers.set('Accept', 'application/json');
-    const token = this.getToken();
-    if (token) headers.set('Authorization', `Bearer ${token}`);
     if (init.body && !(init.body instanceof FormData) && !headers.has('Content-Type')) {
       headers.set('Content-Type', 'application/json');
     }
 
     let response: Response;
     try {
-      response = await fetch(this.url(path), { ...init, headers });
+      response = await fetch(this.url(path), { ...init, headers, credentials: 'include' });
     } catch {
       this.onNetworkError?.();
       throw new ApiError(0, 'network_error', 'The Overroot server could not be reached');
@@ -56,11 +53,9 @@ export class ApiClient {
 
   async bytes(path: string): Promise<{ data: ArrayBuffer; etag: string | null; filename: string | null }> {
     const headers = new Headers({ Accept: '*/*' });
-    const token = this.getToken();
-    if (token) headers.set('Authorization', `Bearer ${token}`);
     let response: Response;
     try {
-      response = await fetch(this.url(path), { headers });
+      response = await fetch(this.url(path), { headers, credentials: 'include' });
     } catch {
       this.onNetworkError?.();
       throw new ApiError(0, 'network_error', 'The Overroot server could not be reached');
@@ -81,33 +76,12 @@ export class ApiClient {
     return url.toString();
   }
 
-  login(username: string, password: string) {
-    return this.request<{ token: string; user: User }>('/api/v1/auth/login', {
-      method: 'POST',
-      body: JSON.stringify({ username, password })
-    });
-  }
-
-  register(invite: string, username: string, password: string) {
-    return this.request<{ token: string; user: User }>('/api/v1/auth/register', {
-      method: 'POST',
-      body: JSON.stringify({ invite, username, password })
-    });
-  }
-
   me() {
     return this.request<{ user: User }>('/api/v1/auth/me');
   }
 
   logout() {
     return this.request<void>('/api/v1/auth/logout', { method: 'POST' });
-  }
-
-  changePassword(currentPassword: string, newPassword: string) {
-    return this.request<void>('/api/v1/auth/password', {
-      method: 'POST',
-      body: JSON.stringify({ currentPassword, newPassword })
-    });
   }
 
   listProjects() {
@@ -275,41 +249,9 @@ export class ApiClient {
       body: JSON.stringify({ projectHash, channel, ...(fileId ? { fileId } : {}) })
     });
   }
-
-  listInvites() {
-    return this.request<{ invites: InviteSummary[] }>('/api/v1/admin/invites');
-  }
-
-  createInvite(expiresInDays = 7) {
-    return this.request<CreatedInvite>('/api/v1/admin/invites', {
-      method: 'POST',
-      body: JSON.stringify({ expiresInDays })
-    });
-  }
-
-  deleteInvite(id: string) {
-    return this.request<void>(`/api/v1/admin/invites/${encodeURIComponent(id)}`, { method: 'DELETE' });
-  }
-
-  private url(path: string): string {
+  url(path: string): string {
     return new URL(path, `${this.baseUrl}/`).toString();
   }
-}
-
-export interface InviteSummary {
-  id: string;
-  expiresAt: string;
-  usedAt: string | null;
-  createdAt: string;
-  createdBy: string;
-  usedBy: string | null;
-}
-
-export interface CreatedInvite {
-  id: string;
-  token: string;
-  expiresAt: string;
-  registrationUrl: string;
 }
 
 async function parseError(response: Response): Promise<ApiError> {

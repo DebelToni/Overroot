@@ -93,7 +93,9 @@ export class CollaborationManager {
     socket.controlledAwarenessIds = new Set();
     active.clients.add(socket);
 
-    socket.on('message', (data: RawData) => this.onMessage(active, socket, data));
+    socket.on('message', (data: RawData) => {
+      if (socket.readyState === socket.OPEN) this.onMessage(active, socket, data);
+    });
     socket.on('close', () => {
       active.clients.delete(socket);
       const ids = [...(socket.controlledAwarenessIds ?? [])];

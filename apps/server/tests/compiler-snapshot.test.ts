@@ -1,8 +1,9 @@
+import { seedUser } from './helpers.js';
 import { mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join, relative, sep } from 'node:path';
 import { expect, it, vi } from 'vitest';
-import { buildApp } from '../src/app.js';
+import { buildApp } from './helpers.js';
 import { config } from '../src/config.js';
 
 const staged = vi.hoisted(() => new Map<string, Buffer>());
@@ -27,7 +28,7 @@ it('stages the requested revision even when sources change before the queued job
   staged.clear();
   const { app, context } = await buildApp({ databasePath: join(dir, 'test.sqlite3'), logger: false });
   try {
-    const user = await context.auth.createUser('snapshot-test', 'snapshot-test-password', true);
+    const user = seedUser(context.db, 'snapshot-test', true);
     const actor = { type: 'user' as const, id: user.id, name: user.username };
     const sources = [
       { path: 'main.tex', content: Buffer.from('\\documentclass{article}\n\\begin{document}\\input{sections/body}\\end{document}') },

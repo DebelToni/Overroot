@@ -1,6 +1,6 @@
 import { config } from './config.js';
 
-const auth = [{ bearerAuth: [] }];
+const auth = [{ bearerAuth: [] }, { humanSession: [] }];
 const projectHash = parameter('projectHash', 'path', true, { type: 'string' }, 'Opaque project hash supplied by the owner');
 const fileId = parameter('fileId', 'path', true, { type: 'string', format: 'uuid' });
 const revisionId = parameter('revisionId', 'path', true, { type: 'string', format: 'uuid' });
@@ -18,7 +18,7 @@ export const openapi = {
     title: 'Overroot Agent API',
     version: '0.1.0',
     description:
-      'Project-scoped, revision-safe REST access. Use the agent password as a Bearer token, and send If-Match on every mutation of an existing file.'
+      'Project-scoped, revision-safe REST access. Agents use a scoped Bearer token independently of shared human accounts. Humans use a host-only HttpOnly cookie after central authorization-code/PKCE sign-in. Every human API request introspects its central grant; outages return 503. Cookie-authenticated mutations require Origin matching the app origin. Send If-Match when mutating existing files.'
   },
   externalDocs: {
     description: 'Agent guide',
@@ -31,9 +31,24 @@ export const openapi = {
     '/api/v1/status': {
       get: { operationId: 'getStatus', security: [], responses: { '200': response('Backend status', 'Status') } }
     },
+    '/api/v1/auth/start': {
+      get: { operationId: 'startHumanSignIn', security: [], parameters: [parameter('returnTo', 'query', false, { type: 'string' }, 'App-local /#/ path; all other values become /#/')], responses: { '302': { description: 'Redirect to the fixed accounts issuer with state and S256 PKCE; sets a 120-second host-only login cookie' }, '503': error('Identity migration required') } }
+    },
+    '/api/v1/auth/callback': {
+      get: { operationId: 'completeHumanSignIn', security: [], parameters: [parameter('state', 'query', true, { type: 'string' }), parameter('code', 'query', true, { type: 'string' })], responses: { '302': { description: 'Consumes browser-bound state, exchanges the single-use code with confidential client authentication, sets __Host-overroot_session, and redirects locally. No browser bearer token.' }, '400': error('Invalid or expired sign-in attempt'), '503': error('Accounts unavailable') } }
+    },
+    '/api/v1/auth/account': {
+      get: { operationId: 'openSharedAccount', security: [], responses: { '302': { description: 'Redirect to central account controls, signup and password settings' } } }
+    },
+    '/api/v1/auth/me': {
+      get: { operationId: 'getHumanAccount', security: [{ humanSession: [] }], responses: { '200': response('Local identity projection and Overroot permissions', 'UserEnvelope'), '401': error(), '503': error('Accounts unavailable') } }
+    },
+    '/api/v1/auth/logout': {
+      post: { operationId: 'logoutHuman', security: [{ humanSession: [] }], responses: { '204': { description: 'Revokes the central app grant, deletes the app session, clears its cookie and closes local sockets' }, '401': error(), '403': error('Exact app Origin required'), '503': error('Accounts unavailable; retry logout') } }
+    },
     '/api/v1/agent/context': {
       get: {
-        operationId: 'getAgentContext', tags: ['Agent'],
+        operationId: 'getAgentContext', security: [{ bearerAuth: [] }], tags: ['Agent'],
         responses: { '200': response('Credential scope and capabilities', 'AgentContext'), '401': error() }
       }
     },
@@ -158,18 +173,20 @@ export const openapi = {
   },
   components: {
     securitySchemes: {
+      humanSession: { type: 'apiKey', in: 'cookie', name: '__Host-overroot_session', description: 'Secure; HttpOnly; SameSite=Lax; Path=/; no Domain. Validated centrally on every API request. Agent Authorization headers take precedence.' },
       bearerAuth: { type: 'http', scheme: 'bearer', bearerFormat: 'Overroot project agent password' }
     },
     schemas: {
+      UserEnvelope: { type: 'object', required: ['user'], properties: { user: { type: 'object', required: ['id', 'username', 'displayName', 'isAdmin', 'createdAt'], properties: { id: { type: 'string' }, username: { type: 'string' }, displayName: { type: 'string' }, isAdmin: { type: 'boolean', description: 'Overroot-local grant, never inferred from central approval' }, createdAt: { type: 'string' } } } } },
       ErrorEnvelope: {
         type: 'object', required: ['error'], properties: {
           error: { type: 'object', required: ['code', 'message'], properties: { code: { type: 'string' }, message: { type: 'string' }, details: {} } }
         }
       },
       Status: {
-        type: 'object', required: ['ok', 'name', 'version', 'setupRequired', 'publicUrl', 'serverTime'], properties: {
-          ok: { type: 'boolean' }, name: { type: 'string' }, version: { type: 'string' }, setupRequired: { type: 'boolean' },
-          publicUrl: { type: 'string', format: 'uri' }, serverTime: { type: 'string', format: 'date-time' }
+        type: 'object', required: ['ok', 'name', 'version', 'identityOrigin', 'publicUrl', 'serverTime'], properties: {
+          ok: { type: 'boolean' }, name: { type: 'string' }, version: { type: 'string' },
+          identityOrigin: { type: 'string', format: 'uri' }, publicUrl: { type: 'string', format: 'uri' }, serverTime: { type: 'string', format: 'date-time' }
         }
       },
       Project: {

@@ -1,10 +1,11 @@
+import { seedUser, login, humanHeaders } from './helpers.js';
 import { mkdtemp, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { gzipSync } from 'node:zlib';
 import type { FastifyInstance } from 'fastify';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import { buildApp } from '../src/app.js';
+import { buildApp } from './helpers.js';
 import type { AppContext } from '../src/context.js';
 import { config } from '../src/config.js';
 
@@ -22,13 +23,9 @@ beforeEach(async () => {
   config.fakeCompiler = true;
   config.publicUrl = 'https://overroot.toni.foo';
   const built = await buildApp({ databasePath: join(dir, 'test.sqlite3'), logger: false });
-  await built.context.auth.createUser('admin', 'correct-horse-battery-staple', true);
-  const login = await built.app.inject({
-    method: 'POST',
-    url: '/api/v1/auth/login',
-    payload: { username: 'admin', password: 'correct-horse-battery-staple' }
-  });
-  harness = { app: built.app, context: built.context, dir, adminToken: login.json().token };
+  const admin = seedUser(built.context.db, 'admin', true);
+  const adminToken = login(built.context.auth, admin);
+  harness = { app: built.app, context: built.context, dir, adminToken };
 });
 
 afterEach(async () => {
@@ -39,7 +36,7 @@ afterEach(async () => {
 });
 
 function bearer(token: string) {
-  return { authorization: `Bearer ${token}` };
+  return token.startsWith('ul_agent_') ? { authorization: `Bearer ${token}` } : humanHeaders(token);
 }
 
 describe('Overroot API', () => {
@@ -56,32 +53,10 @@ describe('Overroot API', () => {
     expect(JSON.stringify(openapi).toLowerCase()).not.toContain('discovery');
   });
 
-  it('supports invite-only accounts and project sharing', async () => {
-    const { app, adminToken } = harness!;
-    const inviteResponse = await app.inject({
-      method: 'POST',
-      url: '/api/v1/admin/invites',
-      headers: bearer(adminToken),
-      payload: { expiresInDays: 2 }
-    });
-    expect(inviteResponse.statusCode).toBe(201);
-    const invite = inviteResponse.json();
-    expect(invite.registrationUrl).toBe(`https://overroot.toni.foo/#/register?invite=${encodeURIComponent(invite.token)}`);
-
-    const registration = await app.inject({
-      method: 'POST',
-      url: '/api/v1/auth/register',
-      payload: { invite: invite.token, username: 'friend', password: 'friend-password-123' }
-    });
-    expect(registration.statusCode).toBe(200);
-    const friendToken = registration.json().token as string;
-
-    const reused = await app.inject({
-      method: 'POST',
-      url: '/api/v1/auth/register',
-      payload: { invite: invite.token, username: 'other', password: 'other-password-123' }
-    });
-    expect(reused.statusCode).toBe(400);
+  it('preserves project sharing for explicit identity projections', async () => {
+    const { app, context, adminToken } = harness!;
+    const friend = seedUser(context.db, 'friend', false);
+    const friendToken = login(context.auth, friend);
 
     const created = await createProject(app, adminToken);
     const shared = await app.inject({

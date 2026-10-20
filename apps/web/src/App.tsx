@@ -35,23 +35,28 @@ export function App() {
 }
 
 function SessionGate() {
-  const { api, token, user, setUser, clearSession } = useSession();
-  const [checking, setChecking] = useState(Boolean(token));
+  const { api, user, setUser, clearSession } = useSession();
+  const [authError, setAuthError] = useState<string | null>(null);
+  const [retry, setRetry] = useState(0);
+  const [checking, setChecking] = useState(true);
   useEffect(() => {
     let active = true;
-    if (!token) { setChecking(false); setUser(null); return; }
     setChecking(true);
+    setAuthError(null);
     void api.me().then(({ user: current }) => { if (active) setUser(current); }).catch((error) => {
-      if (active && error instanceof ApiError && error.status === 401) clearSession();
+      if (!active) return;
+      if (error instanceof ApiError && error.status === 401) clearSession();
+      else setAuthError(error instanceof Error ? error.message : 'Shared accounts unavailable');
     }).finally(() => { if (active) setChecking(false); });
     return () => { active = false; };
-  }, [api, token, setUser, clearSession]);
+  }, [api, setUser, clearSession, retry]);
+  if (authError) return <OfflineScreen message={authError} retry={() => setRetry((value) => value + 1)}/>;
   if (checking) return <BootScreen label="Opening your workspace"/>;
   return <Suspense fallback={<BootScreen label="Opening Overroot"/>}><Routes>
-    <Route path="/login" element={token && user ? <Navigate to="/" replace/> : <AuthPage mode="login"/>}/>
-    <Route path="/register" element={token && user ? <Navigate to="/" replace/> : <AuthPage mode="register"/>}/>
-    <Route path="/" element={token && user ? <DashboardPage/> : <Navigate to="/login" replace/>}/>
-    <Route path="/project/:hash" element={token && user ? <WorkspacePage/> : <Navigate to="/login" replace/>}/>
+    <Route path="/login" element={user ? <Navigate to="/" replace/> : <AuthPage mode="login"/>}/>
+    <Route path="/register" element={user ? <Navigate to="/" replace/> : <AuthPage mode="register"/>}/>
+    <Route path="/" element={user ? <DashboardPage/> : <Navigate to="/login" replace/>}/>
+    <Route path="/project/:hash" element={user ? <WorkspacePage/> : <Navigate to="/login" replace/>}/>
     <Route path="*" element={<Navigate to="/" replace/>}/>
   </Routes></Suspense>;
 }

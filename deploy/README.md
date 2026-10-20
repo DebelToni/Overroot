@@ -18,7 +18,11 @@ OVERROOT_ALLOWED_ORIGINS=https://overroot.toni.foo
 OVERROOT_PUBLIC_URL=https://overroot.toni.foo
 OVERROOT_TRUST_PROXY=true
 OVERROOT_FAKE_COMPILER=false
+OVERROOT_IDENTITY_ORIGIN=https://accounts.toni.foo
+OVERROOT_IDENTITY_BASE_URL=http://127.0.0.1:18746
 ```
+
+Set `OVERROOT_IDENTITY_CLIENT_SECRET` privately in the protected runtime environment, with the same client secret registered at the provider. The app fails closed if central configuration is absent. Before allowing this release through the updater, complete [the shared-account rollout and explicit identity migration](SHARED-ACCOUNTS.md).
 
 Store the named tunnel's connector token in `~/.config/overroot/tunnel-token` with mode 0600. Never put it in a unit, Git, or command arguments. Configure a proxied DNS CNAME for the app hostname to the dedicated tunnel's `UUID.cfargotunnel.com` target. Resource IDs are recorded privately in `~/.local/state/overroot/cloudflare.json`.
 
@@ -32,7 +36,7 @@ systemctl --user daemon-reload
 systemctl --user enable overroot.service
 ```
 
-For a fresh installation, first initialize the database and administrator from the checkout with `OVERROOT_DATA_DIR` pointing to the configured production data directory, using `pnpm admin:create`. For a restoration, use the verified database instead, with filename `overroot.sqlite3`; retain the original recovery copy. Do not launch a second server against production data.
+A fresh empty database provisions ordinary approved accounts on central sign-in. Central approval/admin status never creates an Overroot admin grant. Existing installations require the explicit mapping migration before sign-in. For a restoration, use the verified database with filename `overroot.sqlite3`; retain the original recovery copy. Do not launch a second server against production data.
 
 After pushing to `main` and waiting for CI:
 

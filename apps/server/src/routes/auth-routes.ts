@@ -1,69 +1,64 @@
-import { randomUUID } from 'node:crypto';
+import { createHash, randomBytes } from 'node:crypto';
 import type { FastifyInstance } from 'fastify';
 import { z } from 'zod';
-import { publicUser } from '../auth.js';
+import { cookie, publicUser, SESSION_COOKIE, sessionCookie } from '../auth.js';
 import { config } from '../config.js';
 import type { AppContext } from '../context.js';
 import { HttpError } from '../errors.js';
-import { hashPassword, randomToken, sha256, verifyPassword } from '../security.js';
 import type { UserRecord } from '../types.js';
 
-const credentialsSchema = z.object({ username: z.string(), password: z.string() });
+const ATTEMPT_COOKIE = '__Host-overroot_login';
+export function localReturnPath(value: unknown): string {
+  if (typeof value !== 'string' || value.length > 2048 || !value.startsWith('/#/') || /[\\\r\n]/.test(value)) return '/#/';
+  return value;
+}
 
 export function registerAuthRoutes(app: FastifyInstance, context: AppContext): void {
-  const loginLimiter = new LoginLimiter();
-
-  app.get('/api/v1/status', async () => {
-    const count = context.db.get<{ count: number }>('SELECT COUNT(*) AS count FROM users')?.count ?? 0;
-    return {
-      ok: true,
-      name: 'Overroot',
-      version: '0.1.0',
-      setupRequired: Number(count) === 0,
-      publicUrl: config.publicUrl,
-      serverTime: new Date().toISOString()
-    };
+  const attempts = new Map<string, { verifier: string; returnTo: string; expires: number }>();
+  app.addHook('preClose', async () => { attempts.clear(); });
+  app.get('/api/v1/status', async () => ({ ok: true, name: 'Overroot', version: '0.1.0', publicUrl: config.publicUrl, identityOrigin: context.auth.identity.origin, serverTime: new Date().toISOString() }));
+  app.get('/api/v1/auth/start', async (request, reply) => {
+    context.auth.assertMigrated();
+    const now = Date.now();
+    for (const [key, attempt] of attempts) if (attempt.expires <= now) attempts.delete(key);
+    if (attempts.size >= 1000) throw new HttpError(429, 'Too many sign-in attempts. Try again shortly.', 'rate_limited');
+    const previous = cookie(request, ATTEMPT_COOKIE);
+    if (previous) attempts.delete(previous);
+    const state = randomBytes(32).toString('base64url');
+    const verifier = randomBytes(32).toString('base64url');
+    const query = z.object({ returnTo: z.string().optional() }).parse(request.query);
+    attempts.set(state, { verifier, returnTo: localReturnPath(query.returnTo), expires: now + 120_000 });
+    const url = new URL('/api/accounts/authorize', context.auth.identity.origin);
+    url.search = new URLSearchParams({ client_id: 'overroot', redirect_uri: context.auth.identity.callback, response_type: 'code', state, code_challenge: createHash('sha256').update(verifier).digest('base64url'), code_challenge_method: 'S256' }).toString();
+    reply.header('Cache-Control', 'no-store');
+    reply.header('Set-Cookie', sessionCookie(ATTEMPT_COOKIE, state, 120));
+    return reply.redirect(url.toString());
   });
-
-  app.post('/api/v1/auth/login', async (request) => {
-    const input = credentialsSchema.parse(request.body);
-    return loginLimiter.run(request.ip, input.username, () => context.auth.login(input.username, input.password));
+  app.get('/api/v1/auth/callback', async (request, reply) => {
+    reply.header('Cache-Control', 'no-store');
+    const query = z.object({ state: z.string().min(1).max(256), code: z.string().min(1).max(512) }).parse(request.query);
+    const browser = cookie(request, ATTEMPT_COOKIE);
+    const attempt = browser === query.state ? attempts.get(query.state) : undefined;
+    if (browser === query.state) attempts.delete(query.state);
+    reply.header('Set-Cookie', sessionCookie(ATTEMPT_COOKIE, '', 0));
+    if (!attempt || attempt.expires <= Date.now()) throw new HttpError(400, 'Invalid or expired sign-in attempt. Start again.', 'invalid_state');
+    const grant = await context.auth.identity.exchange(query.code, attempt.verifier);
+    const session = context.auth.createSession(grant);
+    reply.header('Set-Cookie', [sessionCookie(ATTEMPT_COOKIE, '', 0), sessionCookie(SESSION_COOKIE, session.token, session.maxAge)]);
+    return reply.redirect(attempt.returnTo);
   });
-
+  app.get('/api/v1/auth/account', async (_request, reply) => reply.redirect(context.auth.identity.origin));
   app.get('/api/v1/auth/me', async (request) => {
     const actor = context.auth.requireUser(request);
-    const user = context.db.get<UserRecord>('SELECT * FROM users WHERE id = ?', actor.id)!;
-    return { user: publicUser(user) };
+    return { user: publicUser(context.db.get<UserRecord>('SELECT * FROM users WHERE id = ?', actor.id)!) };
   });
-
   app.post('/api/v1/auth/logout', async (request, reply) => {
     const actor = context.auth.requireUser(request);
+    await context.auth.logout(actor);
     context.gateway.closeSession(actor.sessionHash);
-    context.auth.logout(actor);
+    reply.header('Set-Cookie', sessionCookie(SESSION_COOKIE, '', 0));
     return reply.code(204).send();
   });
-
-  app.post('/api/v1/auth/register', async (request) => {
-    const input = z
-      .object({ invite: z.string().min(1), username: z.string(), password: z.string() })
-      .parse(request.body);
-    await context.auth.registerWithInvite(input.invite, input.username, input.password);
-    return context.auth.login(input.username, input.password);
-  });
-
-  app.post('/api/v1/auth/password', async (request, reply) => {
-    const actor = context.auth.requireUser(request);
-    const input = z.object({ currentPassword: z.string(), newPassword: z.string().min(8).max(256) }).parse(request.body);
-    const user = context.db.get<UserRecord>('SELECT * FROM users WHERE id = ?', actor.id)!;
-    if (!(await verifyPassword(input.currentPassword, user.password_hash))) {
-      throw new HttpError(401, 'Current password is incorrect', 'invalid_password');
-    }
-    context.db.run('UPDATE users SET password_hash = ? WHERE id = ?', await hashPassword(input.newPassword), user.id);
-    context.db.run('DELETE FROM sessions WHERE user_id = ? AND token_hash <> ?', user.id, actor.sessionHash);
-    context.gateway.closeOtherUserSessions(user.id, actor.sessionHash);
-    return reply.code(204).send();
-  });
-
   app.get('/api/v1/users', async (request) => {
     context.auth.requireUser(request);
     const query = z.object({ q: z.string().default('') }).parse(request.query);
@@ -82,81 +77,4 @@ export function registerAuthRoutes(app: FastifyInstance, context: AppContext): v
     return { users: context.db.all<UserRecord>('SELECT * FROM users ORDER BY created_at').map(publicUser) };
   });
 
-  app.get('/api/v1/admin/invites', async (request) => {
-    const actor = context.auth.requireUser(request);
-    if (!actor.isAdmin) throw new HttpError(403, 'Administrator access is required', 'admin_required');
-    return {
-      invites: context.db.all(
-        `SELECT i.id, i.expires_at AS expiresAt, i.used_at AS usedAt, i.created_at AS createdAt,
-                creator.username AS createdBy, used.username AS usedBy
-         FROM invites i
-         JOIN users creator ON creator.id = i.created_by
-         LEFT JOIN users used ON used.id = i.used_by
-         ORDER BY i.created_at DESC`
-      )
-    };
-  });
-
-  app.post('/api/v1/admin/invites', async (request, reply) => {
-    const actor = context.auth.requireUser(request);
-    if (!actor.isAdmin) throw new HttpError(403, 'Administrator access is required', 'admin_required');
-    const input = z.object({ expiresInDays: z.number().int().min(1).max(30).default(7) }).parse(request.body ?? {});
-    const token = randomToken('ul_invite_', 24);
-    const now = new Date();
-    const expiresAt = new Date(now.getTime() + input.expiresInDays * 86_400_000).toISOString();
-    const id = randomUUID();
-    context.db.run(
-      `INSERT INTO invites (id, token_hash, created_by, expires_at, created_at)
-       VALUES (?, ?, ?, ?, ?)`,
-      id,
-      sha256(token),
-      actor.id,
-      expiresAt,
-      now.toISOString()
-    );
-    return reply.code(201).send({
-      id,
-      token,
-      expiresAt,
-      registrationUrl: `${config.publicUrl}/#/register?invite=${encodeURIComponent(token)}`
-    });
-  });
-
-  app.delete('/api/v1/admin/invites/:id', async (request, reply) => {
-    const actor = context.auth.requireUser(request);
-    if (!actor.isAdmin) throw new HttpError(403, 'Administrator access is required', 'admin_required');
-    const { id } = z.object({ id: z.string().uuid() }).parse(request.params);
-    context.db.run('DELETE FROM invites WHERE id = ? AND used_at IS NULL', id);
-    return reply.code(204).send();
-  });
-}
-
-class LoginLimiter {
-  private readonly attempts = new Map<string, number[]>();
-  private active = 0;
-
-  async run<T>(ip: string, username: string, action: () => Promise<T>): Promise<T> {
-    const now = Date.now();
-    const keys: Array<[string, number]> = [
-      [`ip:${ip}`, 12],
-      [`account:${ip}:${username.trim().toLowerCase()}`, 6]
-    ];
-    for (const [key, limit] of keys) {
-      const recent = (this.attempts.get(key) ?? []).filter((time) => now - time < 5 * 60_000);
-      if (recent.length >= limit) {
-        throw new HttpError(429, 'Too many login attempts. Try again in a few minutes.', 'rate_limited');
-      }
-      recent.push(now);
-      this.attempts.set(key, recent);
-    }
-    if (this.active >= 4) throw new HttpError(429, 'The login service is busy. Try again shortly.', 'rate_limited');
-    this.active += 1;
-    try {
-      const result = await action();
-      for (const [key] of keys) this.attempts.delete(key);
-      return result;
-    } finally {
-      this.active -= 1;
-    }
-  }
 }
