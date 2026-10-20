@@ -35,7 +35,6 @@ export const config = {
     .map((origin) => origin.trim())
     .filter(Boolean),
   publicUrl: (process.env.OVERROOT_PUBLIC_URL ?? 'https://overroot.toni.foo').replace(/\/+$/, ''),
-  sessionDays: integer('OVERROOT_SESSION_DAYS', 30),
   compileTimeoutSeconds: integer('OVERROOT_COMPILE_TIMEOUT_SECONDS', 45),
   compileMaxJobs: integer('OVERROOT_COMPILE_MAX_JOBS', 8),
   compileMaxSnapshotBytes: integer('OVERROOT_COMPILE_MAX_SNAPSHOT_BYTES', 128 * 1024 * 1024),

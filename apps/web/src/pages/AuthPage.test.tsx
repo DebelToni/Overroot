@@ -1,100 +1,47 @@
-import { act, cleanup, fireEvent, render, screen } from '@testing-library/react';
-import { MemoryRouter, Route, Routes } from 'react-router-dom';
-import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { cleanup, render, screen } from '@testing-library/react';
+import { MemoryRouter } from 'react-router-dom';
+import { afterEach, expect, it, vi } from 'vitest';
 import { AuthPage } from './AuthPage';
-
-const harness = vi.hoisted(() => ({
-  api: { request: vi.fn(), login: vi.fn(), register: vi.fn() },
-  setSession: vi.fn()
-}));
-vi.mock('../lib/session', () => ({ useSession: () => ({ api: harness.api, token: null, setSession: harness.setSession }) }));
-vi.mock('../hooks/useTheme', () => ({ useTheme: () => ({ preference: 'light', setPreference: vi.fn() }) }));
-
-function deferred<T>() {
-  let resolve!: (value: T) => void;
-  let reject!: (reason: Error) => void;
-  const promise = new Promise<T>((done, fail) => { resolve = done; reject = fail; });
-  return { promise, resolve, reject };
-}
-
-beforeEach(() => {
-  vi.resetAllMocks();
-  harness.api.request.mockResolvedValue({ setupRequired: false });
-});
+vi.mock('../lib/session', () => ({ useSession: () => ({ api: { url: (path: string) => `https://overroot.toni.foo${path}` } }) }));
+vi.mock('../hooks/useTheme', () => ({ useTheme: () => ({ preference: 'system', setPreference: vi.fn() }) }));
 afterEach(cleanup);
+it.each(['login', 'register'] as const)('%s directs people to central sign-in without collecting passwords', (mode) => {
+  const { container } = render(<MemoryRouter><AuthPage mode={mode}/></MemoryRouter>);
+  expect(screen.getByRole('link', { name: /Continue to shared accounts/ })).toHaveAttribute('href', 'https://overroot.toni.foo/api/v1/auth/start');
+  expect(container.querySelector('input')).toBeNull();
+  expect(screen.getByText(/administrator approval/)).toBeInTheDocument();
+});
 
-describe('authentication progress', () => {
-  it('ignores a late sign-in result after switching to registration', async () => {
-    const pending = deferred<{ token: string; user: { username: string } }>();
-    harness.api.login.mockReturnValueOnce(pending.promise);
-    render(<MemoryRouter initialEntries={['/login']}><Routes><Route path="/login" element={<AuthPage mode="login"/>}/><Route path="/register" element={<AuthPage mode="register"/>}/><Route path="/" element={<div>Project dashboard</div>}/></Routes></MemoryRouter>);
-    fireEvent.change(screen.getByLabelText('Username'), { target: { value: 'writer' } });
-    fireEvent.change(screen.getByLabelText('Password'), { target: { value: 'test-password' } });
-    fireEvent.submit(screen.getByLabelText('Password').closest('form')!);
-    fireEvent.click(screen.getByRole('link', { name: 'Create an account' }));
-    expect(screen.getByRole('button', { name: 'Join Overroot' })).toBeEnabled();
-    await act(async () => { pending.resolve({ token: 'stale-token', user: { username: 'writer' } }); });
-    expect(harness.setSession).not.toHaveBeenCalled();
-    expect(screen.getByRole('heading', { name: 'Create an account' })).toBeInTheDocument();
-    expect(screen.queryByText('Project dashboard')).not.toBeInTheDocument();
-  });
+it.each([
+  ['invalid_attempt', 'This sign-in attempt expired or is invalid. Start a fresh sign-in to continue.'],
+  ['accounts_unavailable', 'Shared accounts could not complete sign-in. Please try again.']
+])('shows %s recovery with an explicit fresh-sign-in action', (reason, message) => {
+  const { container } = render(<MemoryRouter initialEntries={[`/login?authError=${reason}`]}><AuthPage mode="login"/></MemoryRouter>);
+  expect(screen.getByRole('alert')).toHaveTextContent(message);
+  expect(screen.getByRole('link', { name: /Start fresh sign-in/ })).toHaveAttribute('href', 'https://overroot.toni.foo/api/v1/auth/start');
+  expect(container.querySelector('input')).toBeNull();
+});
+it('never reflects unrecognized callback query text', () => {
+  render(<MemoryRouter initialEntries={['/login?authError=untrusted-text&code=private-code&state=private-state']}><AuthPage mode="login"/></MemoryRouter>);
+  expect(screen.queryByRole('alert')).toBeNull();
+  expect(screen.queryByText(/private-code|private-state|untrusted-text/)).toBeNull();
+  expect(screen.getByRole('link', { name: /Continue to shared accounts/ })).toHaveAttribute('href', 'https://overroot.toni.foo/api/v1/auth/start');
+});
 
-  it('keeps current registration progress when the previous sign-in fails late', async () => {
-    const login = deferred<{ token: string; user: { username: string } }>();
-    const register = deferred<{ token: string; user: { username: string } }>();
-    harness.api.login.mockReturnValueOnce(login.promise);
-    harness.api.register.mockReturnValueOnce(register.promise);
-    render(<MemoryRouter initialEntries={['/login']}><Routes><Route path="/login" element={<AuthPage mode="login"/>}/><Route path="/register" element={<AuthPage mode="register"/>}/><Route path="/" element={<div>Project dashboard</div>}/></Routes></MemoryRouter>);
-    fireEvent.change(screen.getByLabelText('Username'), { target: { value: 'writer' } });
-    fireEvent.change(screen.getByLabelText('Password'), { target: { value: 'test-password' } });
-    fireEvent.submit(screen.getByLabelText('Password').closest('form')!);
-    fireEvent.click(screen.getByRole('link', { name: 'Create an account' }));
-    fireEvent.change(screen.getByLabelText('Invitation'), { target: { value: 'invitation' } });
-    fireEvent.submit(screen.getByLabelText('Password').closest('form')!);
-    await act(async () => { login.reject(new Error('Old login rejected')); });
-    expect(screen.queryByRole('alert')).not.toBeInTheDocument();
-    expect(screen.getByRole('button', { name: 'Creating account…' })).toBeDisabled();
-    expect(screen.getByRole('status')).toHaveTextContent('Creating account…');
-    const session = { token: 'current-token', user: { username: 'writer' } };
-    await act(async () => { register.resolve(session); });
-    expect(harness.setSession).toHaveBeenCalledExactlyOnceWith(session.token, session.user);
-    expect(screen.getByText('Project dashboard')).toBeInTheDocument();
-  });
-
-  it.each(['login', 'register'] as const)('keeps %s progress tied to the request and recovers after failure', async (mode) => {
-    const pending = deferred<{ token: string; user: { username: string } }>();
-    harness.api[mode].mockReturnValue(pending.promise);
-    render(<MemoryRouter initialEntries={['/auth']}><Routes><Route path="/auth" element={<AuthPage mode={mode}/>}/><Route path="/" element={<div>Project dashboard</div>}/></Routes></MemoryRouter>);
-    if (mode === 'register') fireEvent.change(screen.getByLabelText('Invitation'), { target: { value: 'invitation' } });
-    fireEvent.change(screen.getByLabelText('Username'), { target: { value: 'writer' } });
-    const password = screen.getByLabelText('Password');
-    fireEvent.change(password, { target: { value: 'test-password' } });
-    const form = password.closest('form')!;
-    fireEvent.submit(form);
-    const progress = mode === 'login' ? 'Signing in…' : 'Creating account…';
-    const button = screen.getByRole('button', { name: progress });
-    expect(button).toBeDisabled();
-    expect(button).toHaveAttribute('aria-busy', 'true');
-    // Chromium may defer descendant text while aria-busy; keep the name explicit.
-    expect(button).toHaveAttribute('aria-label', progress);
-    expect(button).toHaveAccessibleName(progress);
-    expect(screen.getByRole('status')).toHaveTextContent(progress);
-    expect(screen.getByRole('status').querySelector('svg')).toHaveAttribute('aria-hidden', 'true');
-    fireEvent.submit(form);
-    expect(harness.api[mode]).toHaveBeenCalledTimes(1);
-
-    await act(async () => { pending.reject(new Error('Please check your credentials')); });
-    expect(screen.getByRole('alert')).toHaveTextContent('Please check your credentials');
-    expect(screen.queryByRole('status')).not.toBeInTheDocument();
-    const retryButton = screen.getByRole('button', { name: mode === 'login' ? 'Sign in' : 'Join Overroot' });
-    expect(retryButton).toBeEnabled();
-    expect(retryButton).not.toHaveAttribute('aria-label');
-
-    const session = { token: 'local-test-token', user: { username: 'writer' } };
-    harness.api[mode].mockResolvedValueOnce(session);
-    fireEvent.submit(form);
-    await screen.findByText('Project dashboard');
-    expect(harness.setSession).toHaveBeenCalledWith(session.token, session.user);
-    expect(harness.api[mode]).toHaveBeenCalledTimes(2);
-  });
+it('passes a safe project target including query and fragment to auth/start', () => {
+  const returnTo = '/#/project/opaque?file=sections%2Fintro.tex#source-line-12';
+  render(<MemoryRouter initialEntries={[{ pathname: '/login', state: { returnTo } }]}><AuthPage mode="login"/></MemoryRouter>);
+  const href = screen.getByRole('link', { name: /Continue to shared accounts/ }).getAttribute('href')!;
+  const url = new URL(href);
+  expect(url.origin).toBe('https://overroot.toni.foo');
+  expect(url.pathname).toBe('/api/v1/auth/start');
+  expect(url.searchParams.get('returnTo')).toBe(returnTo);
+});
+it.each([
+  'https://evil.test/project/stolen', '//evil.test/project/stolen', '/\\evil.test',
+  '/api/v1/auth/callback', '/#/project/opaque\r\nLocation:evil', '/#/project/\\evil',
+  `/#/project/${'x'.repeat(2048)}`, null, 123, { pathname: '/project/opaque' }, '/#/'
+])('keeps the default sign-in link for an unsafe or default target: %j', (returnTo) => {
+  render(<MemoryRouter initialEntries={[{ pathname: '/login', state: { returnTo } }]}><AuthPage mode="login"/></MemoryRouter>);
+  expect(screen.getByRole('link', { name: /Continue to shared accounts/ })).toHaveAttribute('href', 'https://overroot.toni.foo/api/v1/auth/start');
 });

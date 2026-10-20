@@ -1,8 +1,8 @@
-import { ArrowRight, FileArchive, FileText, LogOut, Plus, Settings2, Upload } from 'lucide-react';
+import { ArrowRight, FileArchive, FileText, LogOut, Plus, Upload } from 'lucide-react';
 import { useEffect, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Brand } from '../components/Brand';
-import { AccountDialog, NewProjectDialog, InvitesDialog } from '../components/DashboardDialogs';
+import { AccountDialog, NewProjectDialog } from '../components/DashboardDialogs';
 import { InlineError, LoadingBlock } from '../components/Feedback';
 import { PendingLabel } from '../components/RootMark';
 import { ThemeControl } from '../components/ThemeControl';
@@ -26,7 +26,6 @@ export function DashboardPage() {
   const [creating, setCreating] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [newOpen, setNewOpen] = useState(false);
-  const [invitesOpen, setInvitesOpen] = useState(false);
   const [accountOpen, setAccountOpen] = useState(false);
 
   async function load() {
@@ -53,8 +52,8 @@ export function DashboardPage() {
   }
 
   async function logout() {
-    try { await api.logout(); } catch { /* Session is cleared locally either way. */ }
-    clearSession();
+    try { await api.logout(); clearSession(); }
+    catch (reason) { setError(reason instanceof Error ? reason.message : 'Could not sign out. Try again.'); }
   }
 
   async function create(name: string, template: string) {
@@ -84,7 +83,6 @@ export function DashboardPage() {
       <Brand subtitle="Collaborative LaTeX studio"/>
       <div className="dashboard-head__actions">
         <ThemeControl value={theme.preference} onChange={theme.setPreference}/>
-        {user?.isAdmin && <button className="plain-button admin-invites-button" type="button" aria-label="Invitations" title="Invitations" onClick={() => setInvitesOpen(true)}><Settings2 size={14}/><span>Invitations</span></button>}
         <button type="button" className="user-chip" aria-label={`Account settings for ${user?.displayName}`} onClick={() => setAccountOpen(true)}><span className="user-chip__details"><b>{user?.displayName}</b><small>{user?.isAdmin ? 'Admin' : 'Member'}</small></span><span className="user-chip__initials" aria-hidden="true">{initials(user?.displayName ?? '')}</span></button>
         <button className="icon-button" type="button" onClick={() => void logout()} aria-label="Log out" title="Log out"><LogOut size={16}/></button>
       </div>
@@ -118,7 +116,6 @@ export function DashboardPage() {
     </main>
     <footer className="dashboard-footer"><span>Overroot · Private open-source studio</span><a href="https://github.com/DebelToni/Overroot" target="_blank" rel="noreferrer">Source</a></footer>
     <NewProjectDialog open={newOpen} templates={templates} onClose={() => showNewProject(false)} onCreate={create} onPendingChange={setCreating}/>
-    {user?.isAdmin && <InvitesDialog open={invitesOpen} onClose={() => setInvitesOpen(false)} api={api}/>}
     {user && <AccountDialog open={accountOpen} onClose={() => setAccountOpen(false)} api={api} username={user.username}/>} 
   </div>;
 }

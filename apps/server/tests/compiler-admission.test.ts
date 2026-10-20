@@ -1,8 +1,9 @@
+import { seedUser } from './helpers.js';
 import { mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join, sep } from 'node:path';
 import { afterEach, beforeEach, expect, it, vi } from 'vitest';
-import { buildApp } from '../src/app.js';
+import { buildApp } from './helpers.js';
 import { config } from '../src/config.js';
 import type { AppContext } from '../src/context.js';
 
@@ -53,7 +54,7 @@ afterEach(async () => {
 async function setup() {
   dir = await mkdtemp(join(tmpdir(), 'overroot-admission-'));
   ({ app, context } = await buildApp({ databasePath: join(dir, 'test.sqlite3'), logger: false }));
-  const user = await context.auth.createUser('admission-test', 'admission-test-password', true);
+  const user = seedUser(context.db, 'admission-test', true);
   const actor = { type: 'user' as const, id: user.id, name: user.username };
   const project = context.projects.createImportedProject(user.id, 'Bounded compile', [
     { path: 'main.tex', content: Buffer.from('Revision A') },

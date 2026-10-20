@@ -28,3 +28,5 @@ If-Match: <revision>
 A `409 revision_conflict` means a person or another agent edited the file. Fetch it again, merge deliberately, and retry. Never retry by blindly overwriting. Creating a new path does not need `If-Match`.
 
 Direct file edits and compilation results are broadcast immediately to connected collaborators. Use `POST /api/v1/projects/{projectHash}/compile`, then inspect `/compile/latest` or the job endpoint. The OpenAPI document is authoritative for request and response fields.
+
+Human sign-in uses shared Space accounts and host-only browser cookies. Agents continue to use their independent project-scoped Bearer credentials, including during account-provider outages. Never request a human password or copy a browser cookie into an agent workflow. Human sockets revalidate central grants on a bounded interval; agents should continue using the REST API and existing project scope.

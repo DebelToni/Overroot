@@ -1,3 +1,4 @@
+import { seedUser, login } from './helpers.js';
 import { mkdtemp, rm } from 'node:fs/promises';
 import type { AddressInfo } from 'node:net';
 import { tmpdir } from 'node:os';
@@ -7,7 +8,9 @@ import WebSocket from 'ws';
 import * as syncProtocol from 'y-protocols/sync';
 import * as Y from 'yjs';
 import { afterEach, expect, it, vi } from 'vitest';
-import { buildApp } from '../src/app.js';
+import { buildApp } from './helpers.js';
+import { config } from '../src/config.js';
+import { sha256 } from '../src/security.js';
 import { Database } from '../src/database.js';
 import { ProjectStore } from '../src/project-store.js';
 import type { WebSocketTicket } from '../src/websockets.js';
@@ -32,7 +35,7 @@ async function setup() {
 
 async function connect(ticket: WebSocketTicket, suffix: string) {
   const port = (app.server.address() as AddressInfo).port;
-  const client = new WebSocket(`ws://127.0.0.1:${port}/ws/projects/${ticket.projectHash}/${suffix}?ticket=${encodeURIComponent(ticket.token)}`);
+  const client = new WebSocket(`ws://127.0.0.1:${port}/ws/projects/${ticket.projectHash}/${suffix}?ticket=${encodeURIComponent(ticket.token)}`, { headers: { host: new URL(config.publicUrl).host, origin: config.publicUrl } });
   clients.push(client);
   await new Promise<void>((resolve, reject) => {
     client.once('open', resolve);
@@ -57,12 +60,15 @@ async function closePromptly() {
 
 it.each([0, 1, 3])('closes a listening app with %i live event sockets without waiting for client disconnection', async count => {
   const { context } = await setup();
+  const user = seedUser(context.db, 'socket-owner');
+  const project = context.projects.createProject(user.id, 'Socket fixture');
+  const sessionHash = sha256(login(context.auth, user));
   const received = new Set<number>();
   const closes: Array<Promise<number>> = [];
   for (let i = 0; i < count; i++) {
     const ticket = context.tickets.create({
-      channel: 'events', projectId: 'fixture', projectHash: 'fixture', sessionHash: 'fixture',
-      actor: { type: 'user', id: 'fixture', name: 'Fixture' }
+      channel: 'events', projectId: project.id, projectHash: project.public_hash, sessionHash,
+      actor: { type: 'user', id: user.id, name: user.display_name }
     });
     const client = await connect(ticket, 'events');
     client.on('message', raw => {
@@ -70,20 +76,20 @@ it.each([0, 1, 3])('closes a listening app with %i live event sockets without wa
     });
     closes.push(new Promise<number>(resolve => client.once('close', code => resolve(code))));
   }
-  context.events.emit('fixture', { type: 'shutdown.probe' });
+  context.events.emit(project.id, { type: 'shutdown.probe' });
   await vi.waitFor(() => expect(received.size).toBe(count));
   await closePromptly();
   expect(await Promise.all(closes)).toEqual(Array(count).fill(1001));
-  expect(() => context.events.emit('fixture', { type: 'after.shutdown' })).not.toThrow();
+  expect(() => context.events.emit(project.id, { type: 'after.shutdown' })).not.toThrow();
 });
 
 it('flushes a pending collaborative edit before closing the database during live-socket shutdown', async () => {
   const { context } = await setup();
-  const user = await context.auth.createUser('shutdown-writer', 'shutdown-writer-password', true);
+  const user = seedUser(context.db, 'shutdown-writer', true);
   const project = context.projects.createProject(user.id, 'Shutdown persistence');
   const file = context.projects.getFile(project.id, 'main.tex')!;
   const ticket = context.tickets.create({
-    channel: 'file', projectId: project.id, projectHash: project.public_hash, fileId: file.id, sessionHash: 'fixture',
+    channel: 'file', projectId: project.id, projectHash: project.public_hash, fileId: file.id, sessionHash: sha256(login(context.auth, user)),
     actor: { type: 'user', id: user.id, name: user.username }
   });
   const client = await connect(ticket, `files/${file.id}`);

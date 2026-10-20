@@ -9,3 +9,5 @@ Collaborative LaTeX studio. Public frontend, API and WebSockets: `https://overro
 - `overroot-deploy.timer` accepts only exact-main successful push CI, builds both apps, backs up, and gracefully switches releases. Changes to the installed updater or units require explicit installation; application deployment does not install host automation changes.
 - Verify code with `pnpm check && pnpm test:compiler`. The latter uses real Docker to test isolated compiler access to nested private source files. Keep the production data directory private while preserving the isolated worker's staging traversal/read permissions.
 - Persistent service changes must update the response check at `~/uptime/overroot.py` and any schedule checks. Liveness probes never compile documents or mutate app data.
+
+- Human auth is a consumer of Space shared accounts, never local passwords. Read `deploy/SHARED-ACCOUNTS.md` before auth/config/migration work. Preserve explicit subject-to-local-ID mappings and local project/admin grants. Tests inject `IdentityProvider`; do not add production auth bypasses or infer identity from email/nickname. Agent Bearer credentials stay independent.

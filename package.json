@@ -10,7 +10,6 @@
     "dev:web": "pnpm --filter @overroot/web dev",
     "build": "pnpm -r build",
     "start": "pnpm --filter @overroot/server start",
-    "admin:create": "pnpm --filter @overroot/server admin:create",
     "backup": "node scripts/backup.mjs",
     "test": "node --test scripts/deploy.test.mjs && uv run --no-project python -m unittest discover -s scripts -p test_pr_review.py && pnpm -r test",
     "test:api": "pnpm --filter @overroot/server test",
@@ -18,7 +17,8 @@
     "test:web": "pnpm --filter @overroot/web test",
     "lint": "pnpm -r lint",
     "typecheck": "pnpm -r typecheck",
-    "check": "pnpm lint && pnpm typecheck && pnpm test && pnpm build"
+    "check": "pnpm lint && pnpm typecheck && pnpm test && pnpm build",
+    "accounts:migrate": "pnpm --filter @overroot/server accounts:migrate"
   },
   "devDependencies": {
     "@types/node": "^24.10.0",

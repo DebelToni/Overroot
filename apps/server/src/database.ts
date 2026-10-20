@@ -25,7 +25,7 @@ export class Database {
 
   private migrate(): void {
     const version = Number(this.raw.prepare('PRAGMA user_version').get()?.user_version ?? 0);
-    if (version > 2) throw new Error(`Database schema ${version} is newer than this Overroot build`);
+    if (version > 3) throw new Error(`Database schema ${version} is newer than this Overroot build`);
     if (version === 0) {
       this.raw.exec(`
         BEGIN IMMEDIATE;
@@ -156,6 +156,20 @@ export class Database {
         BEGIN IMMEDIATE;
         ALTER TABLE files ADD COLUMN y_state BLOB;
         PRAGMA user_version = 2;
+        COMMIT;
+      `);
+    }
+    if (version < 3) {
+      this.raw.exec(`
+        BEGIN IMMEDIATE;
+        CREATE TABLE external_identities (
+          subject TEXT PRIMARY KEY,
+          user_id TEXT NOT NULL UNIQUE REFERENCES users(id) ON DELETE CASCADE
+        ) STRICT;
+        ALTER TABLE sessions ADD COLUMN central_session_id TEXT;
+        CREATE TABLE identity_migration (id INTEGER PRIMARY KEY CHECK (id = 1), completed INTEGER NOT NULL) STRICT;
+        INSERT INTO identity_migration SELECT 1, CASE WHEN COUNT(*) = 0 THEN 1 ELSE 0 END FROM users;
+        PRAGMA user_version = 3;
         COMMIT;
       `);
     }

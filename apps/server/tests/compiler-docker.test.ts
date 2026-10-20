@@ -1,9 +1,10 @@
+import { seedUser } from './helpers.js';
 import { execFileSync } from 'node:child_process';
 import { mkdtemp, readFile, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { expect, it, vi } from 'vitest';
-import { buildApp } from '../src/app.js';
+import { buildApp } from './helpers.js';
 import { config } from '../src/config.js';
 
 it.skipIf(process.env.OVERROOT_TEST_DOCKER !== '1')('compiles a nested private source snapshot as the isolated Docker UID and reuses SyncTeX', async () => {
@@ -14,7 +15,7 @@ it.skipIf(process.env.OVERROOT_TEST_DOCKER !== '1')('compiles a nested private s
   config.dockerContainer = `overroot-tectonic-test-${process.pid}`;
   const { app, context } = await buildApp({ databasePath: join(dir, 'test.sqlite3'), logger: false });
   try {
-    const user = await context.auth.createUser('compiler-test', 'compiler-test-password', true);
+    const user = seedUser(context.db, 'compiler-test', true);
     const modules = Array.from({ length: 20 }, (_, i) => ({
       path: `sections/deep/chapter-${i % 4}/part-${i}.tex`,
       content: Buffer.from(`Module ${i} is readable by the isolated compiler.\n\n`)

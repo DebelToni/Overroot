@@ -1,9 +1,9 @@
+import { seedUser } from './helpers.js';
 import { mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import * as Y from 'yjs';
 import { describe, expect, it } from 'vitest';
-import { AuthService } from '../src/auth.js';
 import { CollaborationManager, EventHub } from '../src/collaboration.js';
 import { Database } from '../src/database.js';
 import { ProjectStore } from '../src/project-store.js';
@@ -14,8 +14,7 @@ import { ProjectStore } from '../src/project-store.js';
     const path = join(dir, 'state.sqlite3');
     try {
       const firstDb = new Database(path);
-      const auth = new AuthService(firstDb);
-      const owner = await auth.createUser('owner', 'owner-password-123', true);
+      const owner = seedUser(firstDb, 'owner', true);
       const firstStore = new ProjectStore(firstDb);
       const project = firstStore.createProject(owner.id, 'Persistent paper');
       const file = firstStore.getFile(project.id, 'main.tex')!;

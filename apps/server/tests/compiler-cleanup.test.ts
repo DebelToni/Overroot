@@ -1,8 +1,9 @@
+import { seedUser } from './helpers.js';
 import { mkdtemp, readFile, readdir, rm, stat, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { dirname, join, sep } from 'node:path';
 import { afterEach, beforeEach, expect, it, vi } from 'vitest';
-import { buildApp } from '../src/app.js';
+import { buildApp } from './helpers.js';
 import { config } from '../src/config.js';
 import type { AppContext } from '../src/context.js';
 
@@ -84,7 +85,7 @@ it.each<Failure>(['pdf-copy', 'invalid-pdf', 'footer-read', 'log-write', 'pdf-re
   'cleans only owned temporary artifacts after %s and recovers the queue', async failure => {
     dir = await mkdtemp(join(tmpdir(), 'overroot-cleanup-'));
     ({ app, context } = await buildApp({ databasePath: join(dir, 'test.sqlite3'), logger: false }));
-    const user = await context.auth.createUser('cleanup-test', 'cleanup-test-password', true);
+    const user = seedUser(context.db, 'cleanup-test', true);
     const actor = { type: 'user' as const, id: user.id, name: user.username };
     const project = context.projects.createImportedProject(user.id, 'Cleanup recovery', [
       { path: 'main.tex', content: Buffer.from('First revision') }

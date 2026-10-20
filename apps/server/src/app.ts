@@ -12,6 +12,7 @@ import { Compiler } from './compiler.js';
 import { config } from './config.js';
 import type { AppContext } from './context.js';
 import { Database } from './database.js';
+import { AccountsProvider, type IdentityProvider } from './identity.js';
 import { HttpError } from './errors.js';
 import { openapi } from './openapi.js';
 import { ProjectStore } from './project-store.js';
@@ -25,28 +26,30 @@ export interface BuildAppOptions {
   databasePath?: string;
   dataDir?: string;
   logger?: boolean;
+  identityProvider?: IdentityProvider;
 }
 
 export async function buildApp(options: BuildAppOptions = {}) {
   const app = Fastify({
     logger: options.logger === false ? false : {
       level: process.env.LOG_LEVEL ?? 'info',
-      redact: ['req.headers.authorization', 'req.query.ticket', 'res.headers.authorization']
+      redact: ['req.headers.authorization', 'req.headers.cookie', 'req.url', 'req.query', 'res.headers.location', 'res.headers["set-cookie"]', 'res.headers.authorization']
     },
     trustProxy: config.trustProxy,
     bodyLimit: 30 * 1024 * 1024,
     requestIdHeader: 'x-request-id'
   });
 
+  const identity = options.identityProvider ?? new AccountsProvider(config.publicUrl);
   const db = new Database(options.databasePath);
-  const auth = new AuthService(db);
+  const auth = new AuthService(db, identity);
   const projects = new ProjectStore(db);
   const events = new EventHub();
   const collaboration = new CollaborationManager(projects, events);
   const appDataDir = options.dataDir ?? (options.databasePath ? dirname(options.databasePath) : config.dataDir);
   const compiler = new Compiler(db, projects, collaboration, events, appDataDir);
   const tickets = new TicketStore();
-  const gateway = new WebSocketGateway(app.server, tickets, collaboration, events);
+  const gateway = new WebSocketGateway(app.server, tickets, collaboration, events, auth);
   const context: AppContext = { db, auth, projects, events, collaboration, compiler, tickets, gateway };
 
   await compiler.initialize();
@@ -75,6 +78,7 @@ export async function buildApp(options: BuildAppOptions = {}) {
       if (!origin || config.allowedOrigins.includes(origin)) callback(null, true);
       else callback(new Error('Origin is not allowed'), false);
     },
+    credentials: true,
     methods: ['GET', 'HEAD', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
     allowedHeaders: ['Authorization', 'Content-Type', 'If-Match', 'X-Request-Id'],
     exposedHeaders: ['ETag', 'X-Compile-Job', 'Content-Disposition'],
@@ -82,6 +86,18 @@ export async function buildApp(options: BuildAppOptions = {}) {
   });
   await app.register(multipart, {
     limits: { files: 1, fileSize: 25 * 1024 * 1024, fields: 10 }
+  });
+
+  app.addHook('onRequest', async (request, reply) => {
+    if (!request.url.startsWith('/api/')) return;
+    if (request.headers.host !== new URL(config.publicUrl).host) throw new HttpError(403, 'Host is not allowed', 'host_denied');
+    reply.header('Cache-Control', 'no-store');
+    const bearer = request.headers.authorization !== undefined;
+    if (!bearer && !['GET', 'HEAD', 'OPTIONS'].includes(request.method) && request.headers.origin !== config.publicUrl) {
+      throw new HttpError(403, 'Origin is not allowed', 'origin_denied');
+    }
+    // Login callbacks must work even when an old app grant is revoked or unavailable.
+    if (!['/api/v1/auth/start', '/api/v1/auth/callback', '/api/v1/auth/account', '/api/v1/status'].includes(request.url.split('?')[0]!)) await auth.prepare(request);
   });
 
   app.addHook('onSend', async (_request, reply, payload) => {

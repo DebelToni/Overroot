@@ -31,3 +31,11 @@ it('keeps creation progress active until completion and allows retry after failu
   expect(onCreate).toHaveBeenLastCalledWith('Untitled paper', 'article');
   expect(onClose).toHaveBeenCalledTimes(1);
 });
+
+it('opens central account controls instead of collecting a password', async () => {
+  const { AccountDialog } = await import('./DashboardDialogs');
+  const { ApiClient } = await import('../lib/api');
+  const { container } = render(<AccountDialog open onClose={vi.fn()} username="local-handle" api={new ApiClient('https://overroot.toni.foo')}/>);
+  expect(screen.getByRole('link', { name: 'Manage account' })).toHaveAttribute('href', 'https://overroot.toni.foo/api/v1/auth/account');
+  expect(container.querySelector('input')).toBeNull();
+});

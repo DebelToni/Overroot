@@ -1,9 +1,10 @@
+import { seedUser } from './helpers.js';
 import { mkdtemp, readFile, rm, stat } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join, resolve, sep } from 'node:path';
 import { afterEach, expect, it, vi } from 'vitest';
 import { stageCompileSources } from '../src/compile-staging.js';
-import { buildApp } from '../src/app.js';
+import { buildApp } from './helpers.js';
 import { config } from '../src/config.js';
 
 const io = vi.hoisted(() => ({
@@ -102,7 +103,7 @@ it('drains an outstanding write before compiler cleanup and recovers the queue a
   let delayed = false;
   const { app, context } = await buildApp({ databasePath: join(dir, 'test.sqlite3'), logger: false });
   try {
-    const user = await context.auth.createUser('staging-test', 'staging-test-password', true);
+    const user = seedUser(context.db, 'staging-test', true);
     const actor = { type: 'user' as const, id: user.id, name: user.username };
     const project = context.projects.createImportedProject(user.id, 'Staging recovery', [
       { path: 'main.tex', content: Buffer.from('First revision') },
