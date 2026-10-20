@@ -29,6 +29,12 @@ async function start(returnTo = '/#/') {
 function callback(state: string, cookie: string, code = 'single-use-code') {
   return built.app.inject({ url: `/api/v1/auth/callback?state=${state}&code=${code}`, headers: { cookie } });
 }
+function expectRecovery(response: Awaited<ReturnType<typeof callback>>) {
+  expect(response.statusCode).toBe(302);
+  expect(response.headers.location).toBe('/#/login?authError=invalid_attempt');
+  expect(response.headers['cache-control']).toBe('no-store');
+  expect(response.headers['set-cookie']).toContain('Max-Age=0');
+}
 function exchangeFor(challenge: string, subject = 'space-existing') {
   const grant = provider.grant(subject, 'Same nickname');
   let used = false;
@@ -48,7 +54,7 @@ describe('central sign-in consumer', () => {
     expect(attempt.url.searchParams.get('code_challenge_method')).toBe('S256');
     const grant = exchangeFor(attempt.url.searchParams.get('code_challenge')!);
     const state = attempt.url.searchParams.get('state')!;
-    expect((await callback(state, '')).statusCode).toBe(400);
+    expectRecovery(await callback(state, ''));
     expect(provider.exchange).not.toHaveBeenCalled();
     const response = await callback(state, attempt.cookie);
     expect(response.statusCode).toBe(302);
@@ -56,7 +62,7 @@ describe('central sign-in consumer', () => {
     const cookies = response.headers['set-cookie'] as string[];
     expect(cookies.every((value) => value.includes('HttpOnly') && value.includes('Secure') && value.includes('SameSite=Lax') && !value.includes('Domain='))).toBe(true);
     expect(response.body).not.toContain('or_session_');
-    expect((await callback(state, attempt.cookie)).statusCode).toBe(400);
+    expectRecovery(await callback(state, attempt.cookie));
     const session = response.cookies.find((entry) => entry.name === '__Host-overroot_session')!;
     const me = await built.app.inject({ url: '/api/v1/auth/me', headers: humanHeaders(session.value) });
     expect(me.statusCode).toBe(200);
@@ -67,17 +73,44 @@ describe('central sign-in consumer', () => {
     vi.useFakeTimers({ toFake: ['Date'] });
     const attempt = await start();
     const exchange = vi.spyOn(provider, 'exchange');
-    expect((await callback('wrong', attempt.cookie)).statusCode).toBe(400);
+    expectRecovery(await callback('wrong', attempt.cookie));
     vi.setSystemTime(Date.now() + 121_000);
-    expect((await callback(attempt.url.searchParams.get('state')!, attempt.cookie)).statusCode).toBe(400);
+    expectRecovery(await callback(attempt.url.searchParams.get('state')!, attempt.cookie));
     expect(exchange).not.toHaveBeenCalled();
+  });
+  it.each([
+    '', '?state=missing-code', '?code=missing-state',
+    '?state=x&state=y&code=code', '?state=x&code=',
+    `?state=${'x'.repeat(257)}&code=code`
+  ])('recovers visibly from malformed callback query %s without exchanging', async (query) => {
+    const exchange = vi.spyOn(provider, 'exchange');
+    expectRecovery(await built.app.inject({ url: `/api/v1/auth/callback${query}` }));
+    expect(exchange).not.toHaveBeenCalled();
+  });
+  it('permits a fresh explicit sign-in after a minutes-long approval wait', async () => {
+    vi.useFakeTimers({ toFake: ['Date'] });
+    const expired = await start();
+    vi.setSystemTime(Date.now() + 180_000);
+    const exchange = vi.spyOn(provider, 'exchange');
+    expectRecovery(await callback(expired.url.searchParams.get('state')!, expired.cookie));
+    expect(exchange).not.toHaveBeenCalled();
+    const fresh = await start();
+    expect(fresh.url.searchParams.get('state')).not.toBe(expired.url.searchParams.get('state'));
+    exchange.mockRestore();
+    exchangeFor(fresh.url.searchParams.get('code_challenge')!);
+    const accepted = await callback(fresh.url.searchParams.get('state')!, fresh.cookie);
+    expect(accepted.statusCode).toBe(302);
+    expect(accepted.headers.location).toBe('/#/');
+    expect(provider.exchange).toHaveBeenCalledOnce();
   });
   it('consumes state even when the provider rejects the code or PKCE exchange', async () => {
     const attempt = await start();
     const exchange = vi.spyOn(provider, 'exchange').mockRejectedValue(unavailable());
     const state = attempt.url.searchParams.get('state')!;
-    expect((await callback(state, attempt.cookie, 'rejected-code')).statusCode).toBe(503);
-    expect((await callback(state, attempt.cookie)).statusCode).toBe(400);
+    const rejected = await callback(state, attempt.cookie, 'rejected-code');
+    expect(rejected.statusCode).toBe(302);
+    expect(rejected.headers.location).toBe('/#/login?authError=accounts_unavailable');
+    expectRecovery(await callback(state, attempt.cookie));
     expect(exchange).toHaveBeenCalledOnce();
   });
   it('denies expired and subject-mismatched grants without transferring identity', async () => {
@@ -152,6 +185,44 @@ describe('central sign-in consumer', () => {
     vi.stubEnv('OVERROOT_IDENTITY_ORIGIN', '');
     vi.stubEnv('OVERROOT_IDENTITY_CLIENT_SECRET', '');
     await expect(productionBuild({ databasePath: join(dir, 'never.sqlite3'), logger: false })).rejects.toThrow('configuration is required');
+  });
+});
+
+describe('sign-in admission', () => {
+  function from(ip: string, headers: Record<string, string> = {}) {
+    return built.app.inject({ url: '/api/v1/auth/start', remoteAddress: ip, headers });
+  }
+  it('limits one IP to 12 starts per rolling five minutes without exhausting other clients', async () => {
+    for (let i = 0; i < 12; i++) expect((await from('198.51.100.1')).statusCode).toBe(302);
+    for (let i = 0; i < 20; i++) {
+      const denied = await from('198.51.100.1');
+      expect(denied.statusCode).toBe(429);
+      expect(denied.json().error.code).toBe('rate_limited');
+      expect(denied.headers.location).toBeUndefined();
+      expect(denied.headers['set-cookie']).toBeUndefined();
+    }
+    expect((await from('198.51.100.2')).statusCode).toBe(302);
+  });
+  it('does not reset admission when a browser replaces or completes an attempt', async () => {
+    const first = await start();
+    exchangeFor(first.url.searchParams.get('code_challenge')!);
+    expect((await callback(first.url.searchParams.get('state')!, first.cookie)).statusCode).toBe(302);
+    for (let i = 0; i < 11; i++) expect((await built.app.inject({ url: '/api/v1/auth/start', headers: { cookie: first.cookie } })).statusCode).toBe(302);
+    expect((await built.app.inject({ url: '/api/v1/auth/start' })).statusCode).toBe(429);
+  });
+  it('expires idle IP buckets and admits fresh starts after the window', async () => {
+    vi.useFakeTimers({ toFake: ['Date'] });
+    for (let i = 0; i < 12; i++) await from('198.51.100.1');
+    vi.setSystemTime(Date.now() + 299_999);
+    expect((await from('198.51.100.1')).statusCode).toBe(429);
+    vi.setSystemTime(Date.now() + 1);
+    expect((await from('198.51.100.1')).statusCode).toBe(302);
+    expect((await from('198.51.100.2')).statusCode).toBe(302);
+  });
+  it('does not let callers rotate a spoofed leftmost forwarded address to evade admission', async () => {
+    for (let i = 0; i < 12; i++) expect((await from('127.0.0.1', { 'x-forwarded-for': `192.0.2.${i + 1}, 198.51.100.1` })).statusCode).toBe(302);
+    expect((await from('127.0.0.1', { 'x-forwarded-for': '192.0.2.99, 198.51.100.1' })).statusCode).toBe(429);
+    expect((await from('127.0.0.1', { 'x-forwarded-for': '192.0.2.99, 198.51.100.2' })).statusCode).toBe(302);
   });
 });
 

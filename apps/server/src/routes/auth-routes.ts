@@ -5,21 +5,27 @@ import { cookie, publicUser, SESSION_COOKIE, sessionCookie } from '../auth.js';
 import { config } from '../config.js';
 import type { AppContext } from '../context.js';
 import { HttpError } from '../errors.js';
+import type { IdentityGrant } from '../identity.js';
 import type { UserRecord } from '../types.js';
 
 const ATTEMPT_COOKIE = '__Host-overroot_login';
+const INVALID_ATTEMPT_REDIRECT = '/#/login?authError=invalid_attempt';
 export function localReturnPath(value: unknown): string {
   if (typeof value !== 'string' || value.length > 2048 || !value.startsWith('/#/') || /[\\\r\n]/.test(value)) return '/#/';
   return value;
 }
 
 export function registerAuthRoutes(app: FastifyInstance, context: AppContext): void {
+  const loginLimiter = new LoginLimiter();
   const attempts = new Map<string, { verifier: string; returnTo: string; expires: number }>();
-  app.addHook('preClose', async () => { attempts.clear(); });
+  app.addHook('preClose', async () => { attempts.clear(); loginLimiter.clear(); });
   app.get('/api/v1/status', async () => ({ ok: true, name: 'Overroot', version: '0.1.0', publicUrl: config.publicUrl, identityOrigin: context.auth.identity.origin, serverTime: new Date().toISOString() }));
   app.get('/api/v1/auth/start', async (request, reply) => {
     context.auth.assertMigrated();
     const now = Date.now();
+    // The closest forwarded address is appended by the trusted ingress, unlike
+    // an attacker-supplied leftmost X-Forwarded-For entry with trustProxy=true.
+    loginLimiter.admit(request.ips?.[1] ?? request.ip, now);
     for (const [key, attempt] of attempts) if (attempt.expires <= now) attempts.delete(key);
     if (attempts.size >= 1000) throw new HttpError(429, 'Too many sign-in attempts. Try again shortly.', 'rate_limited');
     const previous = cookie(request, ATTEMPT_COOKIE);
@@ -36,13 +42,19 @@ export function registerAuthRoutes(app: FastifyInstance, context: AppContext): v
   });
   app.get('/api/v1/auth/callback', async (request, reply) => {
     reply.header('Cache-Control', 'no-store');
-    const query = z.object({ state: z.string().min(1).max(256), code: z.string().min(1).max(512) }).parse(request.query);
-    const browser = cookie(request, ATTEMPT_COOKIE);
-    const attempt = browser === query.state ? attempts.get(query.state) : undefined;
-    if (browser === query.state) attempts.delete(query.state);
+    const query = z.object({ state: z.string().min(1).max(256), code: z.string().min(1).max(512) }).safeParse(request.query);
     reply.header('Set-Cookie', sessionCookie(ATTEMPT_COOKIE, '', 0));
-    if (!attempt || attempt.expires <= Date.now()) throw new HttpError(400, 'Invalid or expired sign-in attempt. Start again.', 'invalid_state');
-    const grant = await context.auth.identity.exchange(query.code, attempt.verifier);
+    if (!query.success) return reply.redirect(INVALID_ATTEMPT_REDIRECT);
+    const browser = cookie(request, ATTEMPT_COOKIE);
+    const attempt = browser === query.data.state ? attempts.get(query.data.state) : undefined;
+    if (browser === query.data.state) attempts.delete(query.data.state);
+    if (!attempt || attempt.expires <= Date.now()) return reply.redirect(INVALID_ATTEMPT_REDIRECT);
+    let grant: IdentityGrant;
+    try { grant = await context.auth.identity.exchange(query.data.code, attempt.verifier); }
+    catch (error) {
+      if (error instanceof HttpError && error.statusCode === 503) return reply.redirect('/#/login?authError=accounts_unavailable');
+      throw error;
+    }
     const session = context.auth.createSession(grant);
     reply.header('Set-Cookie', [sessionCookie(ATTEMPT_COOKIE, '', 0), sessionCookie(SESSION_COOKIE, session.token, session.maxAge)]);
     return reply.redirect(attempt.returnTo);
@@ -77,4 +89,26 @@ export function registerAuthRoutes(app: FastifyInstance, context: AppContext): v
     return { users: context.db.all<UserRecord>('SELECT * FROM users ORDER BY created_at').map(publicUser) };
   });
 
+}
+
+// Adapted from the former local-password LoginLimiter: only IP admission is
+// relevant now; no account/password work or success-based reset remains.
+class LoginLimiter {
+  private readonly attempts = new Map<string, number[]>();
+
+  admit(ip: string, now: number): void {
+    for (const [key, times] of this.attempts) {
+      const recent = times.filter((time) => now - time < 5 * 60_000);
+      if (recent.length) this.attempts.set(key, recent);
+      else this.attempts.delete(key);
+    }
+    const recent = this.attempts.get(ip) ?? [];
+    if (recent.length >= 12 || (!this.attempts.has(ip) && this.attempts.size >= 4096)) {
+      throw new HttpError(429, 'Too many sign-in attempts. Try again in a few minutes.', 'rate_limited');
+    }
+    recent.push(now);
+    this.attempts.set(ip, recent);
+  }
+
+  clear(): void { this.attempts.clear(); }
 }

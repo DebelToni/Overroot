@@ -49,7 +49,15 @@ There is no automatic rollback. Before restoring, stop the app and updater, pres
 
 ## Runtime semantics
 
-Sign-in attempts are in-memory, capped at 1000, browser-bound and single-use, with 120-second expiry and S256 PKCE. App restarts discard pending attempts. Callback exchange uses the confidential backchannel, creates a hashed-token local session referencing the central grant and returns a host-only `__Host-overroot_session` cookie, never a browser bearer token. The cookie is Secure, HttpOnly, SameSite=Lax, Path=/, with no Domain. Old localStorage human tokens are discarded by the frontend and never accepted by the API.
+Sign-in attempts are in-memory, capped at 1000, browser-bound and single-use, with 120-second expiry and S256 PKCE.
+
+Start admission permits 12 requests per client IP in a rolling five-minute window, including replaced/completed attempts. The limiter retains at most 4096 IP buckets, prunes expired entries on admission, and clears during preClose; admission limits return 429 before creating a new state/verifier.
+
+With `OVERROOT_TRUST_PROXY=true`, admission uses the closest forwarded client address, not an untrusted leftmost X-Forwarded-For value. The protected ingress must append/overwrite the real client address in that position; otherwise disable proxy trust and use the direct peer IP. Parent must verify this existing Cloudflare Tunnel boundary before activation. App restarts discard pending attempts and rate-limit history.
+
+Callback exchange uses the confidential backchannel, creates a hashed-token local session referencing the central grant and returns a host-only `__Host-overroot_session` cookie, never a browser bearer token. The cookie is Secure, HttpOnly, SameSite=Lax, Path=/, with no Domain. Old localStorage human tokens are discarded by the frontend and never accepted by the API.
+
+Malformed, missing, mismatched, replayed or expired callback state never exchanges a code: the callback clears the attempt cookie and redirects to the app sign-in screen with a static error and an explicit fresh-sign-in action. An approval wait longer than the attempt TTL requires that fresh action; no validation is relaxed. Provider exchange failures also redirect to a retry screen, without echoing codes/state or automatically retrying the exchange.
 
 Every human API request introspects its grant through the async hook before synchronous authorization. Inactive/expired/mismatched grants deny access. Provider errors return visible 503 and preserve the local session for retry. Authorization headers, including invalid ones, always take precedence over cookies; agent scopes do not depend on the provider. Host isolation is exact and cookie-authenticated mutations require the exact app Origin.
 

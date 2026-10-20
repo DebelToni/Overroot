@@ -32,10 +32,10 @@ export const openapi = {
       get: { operationId: 'getStatus', security: [], responses: { '200': response('Backend status', 'Status') } }
     },
     '/api/v1/auth/start': {
-      get: { operationId: 'startHumanSignIn', security: [], parameters: [parameter('returnTo', 'query', false, { type: 'string' }, 'App-local /#/ path; all other values become /#/')], responses: { '302': { description: 'Redirect to the fixed accounts issuer with state and S256 PKCE; sets a 120-second host-only login cookie' }, '503': error('Identity migration required') } }
+      get: { operationId: 'startHumanSignIn', security: [], parameters: [parameter('returnTo', 'query', false, { type: 'string' }, 'App-local /#/ path; all other values become /#/')], responses: { '302': { description: 'Redirect to the fixed accounts issuer with state and S256 PKCE; sets a 120-second host-only login cookie' }, '429': error('Sign-in admission limit reached: 12 starts per client IP in five minutes, or global capacity full'), '503': error('Identity migration required') } }
     },
     '/api/v1/auth/callback': {
-      get: { operationId: 'completeHumanSignIn', security: [], parameters: [parameter('state', 'query', true, { type: 'string' }), parameter('code', 'query', true, { type: 'string' })], responses: { '302': { description: 'Consumes browser-bound state, exchanges the single-use code with confidential client authentication, sets __Host-overroot_session, and redirects locally. No browser bearer token.' }, '400': error('Invalid or expired sign-in attempt'), '503': error('Accounts unavailable') } }
+      get: { operationId: 'completeHumanSignIn', security: [], parameters: [parameter('state', 'query', true, { type: 'string' }), parameter('code', 'query', true, { type: 'string' })], responses: { '302': { description: 'Consumes browser-bound state, exchanges the single-use code with confidential client authentication, sets __Host-overroot_session, and redirects locally. Invalid/expired attempts redirect to /#/login?authError=invalid_attempt without exchanging a code. Provider exchange failures redirect to /#/login?authError=accounts_unavailable. These screens offer an explicit fresh-sign-in action. No browser bearer token.' }, '503': error('Identity migration required') } }
     },
     '/api/v1/auth/account': {
       get: { operationId: 'openSharedAccount', security: [], responses: { '302': { description: 'Redirect to central account controls, signup and password settings' } } }
