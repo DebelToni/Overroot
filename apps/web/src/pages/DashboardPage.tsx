@@ -105,7 +105,7 @@ export function DashboardPage() {
           {projects.length === 0 && <div className="dashboard-empty"><FileArchive size={28}/><h3>No projects yet.</h3><p>Begin with a clean template or import an existing ZIP archive.</p><button className="plain-button" type="button" onClick={() => showNewProject(true)}>{creating ? 'View project creation' : 'Create your first project'} <ArrowRight size={14}/></button></div>}
           {projects.map((project) => <button key={project.hash} type="button" className="project-row" onClick={() => navigate(`/project/${project.hash}`)}>
             <span className="project-row__number" aria-hidden="true"><FileText size={21}/></span>
-            <span className="project-row__main"><strong>{project.name}</strong><small>{project.entryFile}</small></span>
+            <span className="project-row__main"><strong>{project.name}</strong></span>
             <span className="project-row__meta"><small>Owner</small><b>{project.owner}</b></span>
             <span className="project-row__meta"><small>Access</small><b className="project-access-tag">{project.role}</b></span>
             <span className="project-row__meta"><small>Updated</small><b>{relativeTime(project.updatedAt)}</b></span>

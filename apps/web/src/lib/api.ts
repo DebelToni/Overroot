@@ -109,7 +109,7 @@ export class ApiClient {
     return this.request<{ project: ProjectDetail }>(`/api/v1/projects/${encodeURIComponent(hash)}`);
   }
 
-  updateProject(hash: string, change: { name?: string; entryFile?: string }) {
+  updateProject(hash: string, change: { name?: string }) {
     return this.request<{ project: ProjectDetail }>(`/api/v1/projects/${encodeURIComponent(hash)}`, {
       method: 'PATCH',
       body: JSON.stringify(change)
@@ -169,8 +169,8 @@ export class ApiClient {
     );
   }
 
-  compile(hash: string) {
-    return this.request<{ job: CompileJob }>(`/api/v1/projects/${encodeURIComponent(hash)}/compile`, { method: 'POST' });
+  compile(hash: string, filePath: string) {
+    return this.request<{ job: CompileJob }>(`/api/v1/projects/${encodeURIComponent(hash)}/compile`, { method: 'POST', body: JSON.stringify({ filePath }) });
   }
 
   latestCompile(hash: string) {

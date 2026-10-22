@@ -4,7 +4,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { gzipSync } from 'node:zlib';
 import type { FastifyInstance } from 'fastify';
-import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { buildApp } from './helpers.js';
 import type { AppContext } from '../src/context.js';
 import { config } from '../src/config.js';
@@ -182,6 +182,93 @@ describe('Overroot API', () => {
       headers: agentHeaders
     });
     expect(restoreWithoutRevision.statusCode).toBe(428);
+  });
+
+  it('lets editors compile their chosen source without changing a project default', async () => {
+    const { app, context, adminToken } = harness!;
+    const editor = seedUser(context.db, 'compile-editor', false);
+    const editorToken = login(context.auth, editor);
+    const project = await createProject(app, adminToken);
+    const base = `/api/v1/projects/${project.hash}`;
+    expect((await app.inject({ method: 'POST', url: `${base}/members`, headers: bearer(adminToken), payload: { username: 'compile-editor', role: 'editor' } })).statusCode).toBe(201);
+    const source = await app.inject({ method: 'POST', url: `${base}/files`, headers: bearer(editorToken), payload: { path: 'chapters/other.tex', content: '\\documentclass{article}\\begin{document}Other\\end{document}' } });
+    expect(source.statusCode).toBe(201);
+    const compile = (filePath: string) => app.inject({ method: 'POST', url: `${base}/compile`, headers: bearer(editorToken), payload: { filePath } });
+    const first = await compile('chapters/other.tex');
+    expect(first.statusCode).toBe(202);
+    expect(first.json().job.entryFile).toBe('chapters/other.tex');
+    await vi.waitFor(() => expect(context.compiler.get(first.json().job.id, context.projects.getProjectByHash(project.hash)!.id)?.status).toBe('succeeded'));
+    const cached = await compile('chapters/other.tex');
+    expect(cached.statusCode).toBe(200);
+    expect(cached.json().job.sourceHash).toBe(first.json().job.sourceHash);
+    const original = await compile('main.tex');
+    expect(original.statusCode).toBe(202);
+    expect(original.json().job.sourceHash).not.toBe(first.json().job.sourceHash);
+    expect((await app.inject({ method: 'GET', url: base, headers: bearer(editorToken) })).json().project.entryFile).toBe('main.tex');
+    for (const filePath of ['missing.tex', '../outside.tex', 'chapters/other.pdf']) {
+      const invalid = await compile(filePath);
+      expect(invalid.statusCode).toBe(400);
+    }
+    const deleted = await app.inject({ method: 'DELETE', url: `${base}/files/${source.json().file.id}`, headers: bearer(editorToken) });
+    expect(deleted.statusCode).toBe(204);
+    expect((await compile('chapters/other.tex')).statusCode).toBe(400);
+    const tree = await app.inject({ method: 'GET', url: `${base}/files`, headers: bearer(editorToken) });
+    const main = tree.json().files.find((file: any) => file.path === 'main.tex');
+    expect((await app.inject({ method: 'DELETE', url: `${base}/files/${main.id}`, headers: bearer(editorToken) })).statusCode).toBe(204);
+  });
+
+  it('keeps the legacy compile default on an eligible .tex across deletion and recreation', async () => {
+    const { app, adminToken } = harness!;
+    const project = await createProject(app, adminToken);
+    const base = `/api/v1/projects/${project.hash}`;
+    const headers = bearer(adminToken);
+    const add = async (path: string) => {
+      const result = await app.inject({ method: 'POST', url: `${base}/files`, headers, payload: { path, content: path } });
+      expect(result.statusCode).toBe(201);
+      return result.json().file.id as string;
+    };
+    const remove = async (id: string) => {
+      expect((await app.inject({ method: 'DELETE', url: `${base}/files/${id}`, headers })).statusCode).toBe(204);
+    };
+    const defaultPath = async () => (await app.inject({ method: 'GET', url: base, headers })).json().project.entryFile as string;
+    const compileDefault = () => app.inject({ method: 'POST', url: `${base}/compile`, headers });
+    const tree = await app.inject({ method: 'GET', url: `${base}/files`, headers });
+    const mainId = tree.json().files.find((file: any) => file.path === 'main.tex').id as string;
+    await add('references.bib');
+    await add('notes.md');
+    const alternateId = await add('standalone.tex');
+    await remove(mainId);
+    expect(await defaultPath()).toBe('standalone.tex');
+    const alternate = await compileDefault();
+    expect(alternate.statusCode).toBe(202);
+    expect(alternate.json().job.entryFile).toBe('standalone.tex');
+    await remove(alternateId);
+    expect(await defaultPath()).toBe('');
+    expect((await compileDefault()).statusCode).toBe(400);
+    const freshId = await add('fresh.tex');
+    expect(await defaultPath()).toBe('fresh.tex');
+    const fresh = await compileDefault();
+    expect(fresh.statusCode).toBe(202);
+    expect(fresh.json().job.entryFile).toBe('fresh.tex');
+    const renamed = await app.inject({ method: 'PATCH', url: `${base}/files/${freshId}`, headers, payload: { path: 'fresh.bib' } });
+    expect(renamed.statusCode).toBe(200);
+    expect(await defaultPath()).toBe('');
+    await add('new-source.tex');
+    expect(await defaultPath()).toBe('new-source.tex');
+  });
+
+  it('rejects retired project entryFile updates rather than silently accepting them', async () => {
+    const { app, adminToken } = harness!;
+    const project = await createProject(app, adminToken);
+    const base = `/api/v1/projects/${project.hash}`;
+    const headers = bearer(adminToken);
+    const source = await app.inject({ method: 'POST', url: `${base}/files`, headers, payload: { path: 'other.tex', content: 'Other' } });
+    expect(source.statusCode).toBe(201);
+    const retired = await app.inject({ method: 'PATCH', url: base, headers, payload: { name: 'Should not change', entryFile: 'other.tex' } });
+    expect(retired.statusCode).toBe(400);
+    expect(retired.json().error.code).toBe('entry_file_retired');
+    const unchanged = await app.inject({ method: 'GET', url: base, headers });
+    expect(unchanged.json().project).toMatchObject({ name: project.name, entryFile: 'main.tex' });
   });
 
   it('compiles, caches, and serves authenticated PDFs', async () => {

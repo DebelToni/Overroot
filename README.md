@@ -75,7 +75,7 @@ the individual source editor for changing includes, file structure, bibliography
 or other project files. Switching views and compiling first synchronize all open
 modules. The cursor's original file and line drive PDF highlighting and History.
 
-The view expands literal braced includes from the compilation root, including
+The view expands literal braced includes from the open source file, including
 nested inputs. It does not evaluate TeX macros or conditional execution. Comments,
 verbatim examples and inputs inside macro arguments are not expanded. Missing,
 repeated and cyclic inputs display a warning; repeated files appear once for
@@ -84,7 +84,7 @@ exports always use the original project files.
 
 ### 3. Compile and review
 
-Select **Compile** to flush the current collaborative editor state and run Tectonic. Successful output appears in the PDF pane for every connected collaborator. A completely empty document body has no printable page, so add content between `\begin{document}` and `\end{document}` before compiling a blank template.
+Open a `.tex` file and select **Compile** to flush the current collaborative editor state and run Tectonic on that file. Every editor can compile the file they opened; no owner-selected main file is needed. Successful output appears in the PDF pane for every connected collaborator. A completely empty document body has no printable page, so add content between `\begin{document}` and `\end{document}` before compiling a blank template.
 
 ## External agent access
 

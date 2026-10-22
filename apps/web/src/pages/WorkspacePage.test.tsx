@@ -4,7 +4,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { WorkspacePage } from './WorkspacePage';
 
 const harness = vi.hoisted(() => ({
-  api: { getProject: vi.fn(), listFiles: vi.fn(), latestCompile: vi.fn(), getFile: vi.fn(), createFile: vi.fn(), renameFile: vi.fn() },
+  api: { getProject: vi.fn(), listFiles: vi.fn(), latestCompile: vi.fn(), getFile: vi.fn(), createFile: vi.fn(), renameFile: vi.fn(), compile: vi.fn() },
   flush: vi.fn(async () => {}),
   user: { id: 'writer', username: 'writer', displayName: 'Writer', isAdmin: false, createdAt: '' },
   onEvent: null as ((event: { type: string; fileId: string }) => void) | null
@@ -71,6 +71,17 @@ function startFileMutation(operation: string, path: string, content: string, ren
     fireEvent.change(upload, { target: { files: [source] } });
   }
 }
+
+it('compiles the open file rather than the stored project default', async () => {
+  harness.api.compile.mockResolvedValue({ job: { id: 'job', status: 'queued', createdAt: new Date().toISOString() } });
+  await openWorkspace();
+  expect(screen.queryByText('MAIN')).not.toBeInTheDocument();
+  fireEvent.click(screen.getByRole('button', { name: 'result.tex' }));
+  await screen.findByText('File test editor');
+  fireEvent.click(screen.getByRole('button', { name: 'Compile' }));
+  await waitFor(() => expect(harness.api.compile).toHaveBeenCalledWith('project', 'result.tex'));
+  expect(harness.flush).toHaveBeenCalled();
+});
 
 it('shows opening progress only while the project request is pending', async () => {
   const project = deferred<Awaited<ReturnType<typeof harness.api.getProject>>>();

@@ -72,12 +72,14 @@ export function registerProjectRoutes(app: FastifyInstance, context: AppContext)
     const { hash } = z.object({ hash: z.string() }).parse(request.params);
     const access = projectAccess(context.db, actor, hash);
     requireOwner(access);
-    const input = z.object({ name: z.string().min(1).max(100).optional(), entryFile: z.string().optional() }).parse(request.body);
+    if (request.body && typeof request.body === 'object' && Object.hasOwn(request.body, 'entryFile')) {
+      throw new HttpError(400, 'Project main file selection is retired; specify filePath when compiling', 'entry_file_retired');
+    }
+    const input = z.object({ name: z.string().min(1).max(100).optional() }).strict().parse(request.body);
     if (input.name) {
       const name = input.name.trim();
       context.db.run('UPDATE projects SET name = ?, updated_at = ? WHERE id = ?', name, new Date().toISOString(), access.project.id);
     }
-    if (input.entryFile) context.projects.setEntryFile(access.project.id, input.entryFile);
     audit(context.db, access.project.id, actorIdentity(actor), 'project.updated', input);
     context.events.emit(access.project.id, { type: 'project.updated' });
     return { project: projectDetail(context, hash, actor) };

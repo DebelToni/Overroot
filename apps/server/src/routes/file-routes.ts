@@ -103,9 +103,6 @@ export function registerFileRoutes(app: FastifyInstance, context: AppContext): v
     const current = context.collaboration.current(fileId);
     assertFileProject(current.file, access.project.id);
     requireAgentRevision(actor, request, current.revision);
-    if (current.file.path === access.project.entry_file) {
-      throw new HttpError(400, 'Choose another entry file before deleting this one', 'entry_file_required');
-    }
     await context.collaboration.remove(fileId);
     context.projects.deleteFile(fileId);
     audit(context.db, access.project.id, actorIdentity(actor), 'file.deleted', { path: current.file.path });

@@ -1,4 +1,4 @@
-import { Bot, Check, Download, Eye, FileClock, KeyRound, Pencil, Plus, RotateCcw, Trash2, UserPlus } from 'lucide-react';
+import { Bot, Download, Eye, FileClock, KeyRound, Pencil, Plus, RotateCcw, Trash2, UserPlus } from 'lucide-react';
 import { useEffect, useState, type FormEvent } from 'react';
 import type { ApiClient } from '../lib/api';
 import { fileSize, relativeTime } from '../lib/format';
@@ -21,10 +21,10 @@ export function NewFileDialog({ open, onClose, onCreate }: { open: boolean; onCl
 }
 
 export function FileActionsDialog({
-  open, file, entryFile, canSetEntry, onClose, onRename, onDelete, onSetEntry
+  open, file, onClose, onRename, onDelete
 }: {
-  open: boolean; file: ProjectFile | null; entryFile: string; canSetEntry: boolean; onClose: () => void;
-  onRename: (path: string) => Promise<void>; onDelete: () => Promise<void>; onSetEntry: () => Promise<void>;
+  open: boolean; file: ProjectFile | null; onClose: () => void;
+  onRename: (path: string) => Promise<void>; onDelete: () => Promise<void>;
 }) {
   const [path, setPath] = useState(''); const [error, setError] = useState<string | null>(null); const [busy, setBusy] = useState(false);
   useEffect(() => { setPath(file?.path ?? ''); setError(null); }, [file, open]);
@@ -35,10 +35,8 @@ export function FileActionsDialog({
     <InlineError message={error}/>
     <div className="vertical-actions">
       <button className="secondary-button" type="button" disabled={busy || path === file.path} onClick={() => void run(() => onRename(path))}><Pencil size={14}/> Rename</button>
-      {canSetEntry && file.kind === 'text' && file.path !== entryFile && <button className="secondary-button" type="button" disabled={busy} onClick={() => void run(onSetEntry)}><Check size={14}/> Use as main file</button>}
-      <button className="danger-button" type="button" disabled={busy || file.path === entryFile} onClick={() => { if (confirm(`Delete ${file.path}?`)) void run(onDelete); }}><Trash2 size={14}/> Delete file</button>
+      <button className="danger-button" type="button" disabled={busy} onClick={() => { if (confirm(`Delete ${file.path}?`)) void run(onDelete); }}><Trash2 size={14}/> Delete file</button>
     </div>
-    {file.path === entryFile && <p className="field-help">The main file cannot be deleted. Choose another main file first.</p>}
   </div></Modal>;
 }
 
@@ -84,15 +82,14 @@ export function AgentDialog({ open, onClose, api, project }: { open: boolean; on
 
 function Credential({ label, value, secret = false }: { label: string; value: string; secret?: boolean }) { return <div className="credential-line"><span>{label}</span><code className={secret ? 'credential-secret' : ''}>{value}</code><CopyButton value={value}/></div>; }
 
-export function ProjectSettingsDialog({ open, onClose, api, project, files, onChanged, onDeleted }: { open: boolean; onClose: () => void; api: ApiClient; project: ProjectDetail; files: ProjectFile[]; onChanged: (project: ProjectDetail) => void; onDeleted: () => void }) {
-  const [name, setName] = useState(project.name); const [entryFile, setEntryFile] = useState(project.entryFile); const [error, setError] = useState<string | null>(null); const [busy, setBusy] = useState(false);
-  useEffect(() => { setName(project.name); setEntryFile(project.entryFile); setError(null); }, [project, open]);
-  async function save(event: FormEvent) { event.preventDefault(); setBusy(true); try { const response = await api.updateProject(project.hash, { name, entryFile }); onChanged(response.project); onClose(); } catch (reason) { setError(message(reason)); } finally { setBusy(false); } }
+export function ProjectSettingsDialog({ open, onClose, api, project, onChanged, onDeleted }: { open: boolean; onClose: () => void; api: ApiClient; project: ProjectDetail; onChanged: (project: ProjectDetail) => void; onDeleted: () => void }) {
+  const [name, setName] = useState(project.name); const [error, setError] = useState<string | null>(null); const [busy, setBusy] = useState(false);
+  useEffect(() => { setName(project.name); setError(null); }, [project, open]);
+  async function save(event: FormEvent) { event.preventDefault(); setBusy(true); try { const response = await api.updateProject(project.hash, { name }); onChanged(response.project); onClose(); } catch (reason) { setError(message(reason)); } finally { setBusy(false); } }
   async function exportZip() { const result = await api.exportProject(project.hash); downloadBytes(result.data, result.filename ?? `${project.name}.zip`, 'application/zip'); }
   async function remove() { if (!confirm(`Permanently delete “${project.name}”?`)) return; await api.deleteProject(project.hash); onDeleted(); }
   return <Modal open={open} onClose={onClose} title="Project settings" eyebrow="Document" size="medium"><form className="stack-form" onSubmit={save}>
     <label className="field"><span>Name</span><input value={name} onChange={(event) => setName(event.target.value)} required maxLength={100}/></label>
-    <label className="field field--select"><span>Main file</span><select value={entryFile} onChange={(event) => setEntryFile(event.target.value)}>{files.filter((file) => file.kind === 'text').map((file) => <option key={file.id}>{file.path}</option>)}</select></label>
     <InlineError message={error}/><div className="form-actions"><button type="button" className="secondary-button" onClick={() => void exportZip()}><Download size={14}/> Export ZIP</button><span className="form-actions__spacer"/><button type="button" className="plain-button" onClick={onClose}>Cancel</button><button type="submit" className="primary-button" disabled={busy}>{busy ? 'Saving…' : 'Save'}</button></div>
     <div className="danger-zone"><div><strong>Delete project</strong><span>Removes files, history, sharing, and agent access.</span></div><button type="button" className="danger-button" onClick={() => void remove()}><Trash2 size={14}/> Delete</button></div>
   </form></Modal>;

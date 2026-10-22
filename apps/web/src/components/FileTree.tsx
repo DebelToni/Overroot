@@ -12,7 +12,6 @@ interface TreeNode {
 export function FileTree({
   files,
   selectedId,
-  entryFile,
   canWrite,
   onSelect,
   onCreate,
@@ -21,7 +20,6 @@ export function FileTree({
 }: {
   files: ProjectFile[];
   selectedId: string | null;
-  entryFile: string;
   canWrite: boolean;
   onSelect: (file: ProjectFile) => void;
   onCreate: () => void;
@@ -44,7 +42,7 @@ export function FileTree({
         </div>}
       </div>
       <nav className="file-tree__scroll">
-        {files.length === 0 ? <div className="tree-empty">No files</div> : <TreeLevel node={root} depth={0} {...{ selectedId, entryFile, canWrite, onSelect, onFileMenu }}/>} 
+        {files.length === 0 ? <div className="tree-empty">No files</div> : <TreeLevel node={root} depth={0} {...{ selectedId, canWrite, onSelect, onFileMenu }}/>}
       </nav>
     </aside>
   );
@@ -54,7 +52,6 @@ function TreeLevel({
   node,
   depth,
   selectedId,
-  entryFile,
   canWrite,
   onSelect,
   onFileMenu
@@ -62,18 +59,17 @@ function TreeLevel({
   node: TreeNode;
   depth: number;
   selectedId: string | null;
-  entryFile: string;
   canWrite: boolean;
   onSelect: (file: ProjectFile) => void;
   onFileMenu: (file: ProjectFile) => void;
 }) {
   return <>
-    {node.folders.map((folder) => <FolderRow key={folder.path} folder={folder} depth={depth} {...{ selectedId, entryFile, canWrite, onSelect, onFileMenu }}/>) }
+    {node.folders.map((folder) => <FolderRow key={folder.path} folder={folder} depth={depth} {...{ selectedId, canWrite, onSelect, onFileMenu }}/>) }
     {node.files.map((file) => {
       const Icon = iconFor(file);
       return <div key={file.id} className={`tree-file ${selectedId === file.id ? 'is-active' : ''}`} style={{ '--depth': depth } as React.CSSProperties}>
         <button type="button" className="tree-file__select" onClick={() => onSelect(file)} title={file.path}>
-          <Icon size={14} strokeWidth={1.6}/><span>{file.path.split('/').at(-1)}</span>{file.path === entryFile && <i>MAIN</i>}
+          <Icon size={14} strokeWidth={1.6}/><span>{file.path.split('/').at(-1)}</span>
         </button>
         {canWrite && <button type="button" className="tree-file__menu" onClick={() => onFileMenu(file)} aria-label={`Actions for ${file.path}`}><MoreHorizontal size={14}/></button>}
       </div>;

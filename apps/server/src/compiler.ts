@@ -10,6 +10,7 @@ import type { ProjectStore } from './project-store.js';
 import type { ActorIdentity, ProjectRecord } from './types.js';
 import { stageCompileSources, type CompileSource } from './compile-staging.js';
 import { hasPdfEnvelope } from './compile-artifacts.js';
+import { normalizeProjectPath } from './paths.js';
 
 export interface CompileJob {
   id: string;
@@ -67,16 +68,21 @@ export class Compiler {
     );
   }
 
-  async request(project: ProjectRecord, actor: ActorIdentity): Promise<CompileJob> {
+  async request(project: ProjectRecord, actor: ActorIdentity, filePath = project.entry_file): Promise<CompileJob> {
     if (this.closing) throw new HttpError(503, 'The compiler is shutting down', 'compiler_unavailable');
     await this.collaboration.flushProject(project.id);
     if (this.closing) throw new HttpError(503, 'The compiler is shutting down', 'compiler_unavailable');
     project = { ...project };
+    let entryFile: string;
+    try { entryFile = normalizeProjectPath(filePath); }
+    catch { throw new HttpError(400, 'Invalid compile source path', 'invalid_compile_file'); }
     const metadata = this.store.compileFileMetadata(project.id);
-    const entry = metadata.find(file => file.path === project.entry_file);
-    if (!entry || entry.kind !== 'text') throw new HttpError(400, 'The project entry file does not exist', 'entry_file_missing');
+    const entry = metadata.find(file => file.path === entryFile);
+    if (!entry || entry.kind !== 'text' || !entryFile.toLowerCase().endsWith('.tex')) {
+      throw new HttpError(400, 'Choose an existing .tex source file to compile', 'invalid_compile_file');
+    }
     const sourceHash = this.store.sourceHash(project.id, [
-      project.entry_file,
+      entryFile,
       config.fakeCompiler ? 'fake-compiler-v1' : config.dockerImage,
       'tectonic-v3:untrusted:synctex:snapshot'
     ], metadata);
@@ -93,7 +99,7 @@ export class Compiler {
     const pending = this.pendingRequests.get(key);
     if (pending) return pending;
     const bytes = metadata.reduce((total, file) => total + file.byte_length, 0);
-    const requested = this.admit(project, actor, sourceHash, bytes);
+    const requested = this.admit(project, actor, entryFile, sourceHash, bytes);
     this.pendingRequests.set(key, requested);
     try {
       return await requested;
@@ -102,7 +108,7 @@ export class Compiler {
     }
   }
 
-  private async admit(project: ProjectRecord, actor: ActorIdentity, sourceHash: string, bytes: number): Promise<CompileJob> {
+  private async admit(project: ProjectRecord, actor: ActorIdentity, entryFile: string, sourceHash: string, bytes: number): Promise<CompileJob> {
     if (!Number.isSafeInteger(bytes) || bytes > this.maxSnapshotBytes) {
       throw new HttpError(413, 'Project sources exceed the compiler snapshot size limit', 'compile_snapshot_too_large');
     }
@@ -131,7 +137,7 @@ export class Compiler {
         const cachedSynctex = join(this.cacheDir, `${sourceHash}.synctex.gz`);
         const synctexPath = await fileExists(cachedSynctex) ? cachedSynctex : null;
         const now = new Date().toISOString();
-        const job = this.insertJob(project, sourceHash, actor, 'succeeded', now, now, cachedPdf, await readOptional(cachedLog), null, synctexPath);
+        const job = this.insertJob(project, entryFile, sourceHash, actor, 'succeeded', now, now, cachedPdf, await readOptional(cachedLog), null, synctexPath);
         this.events.emit(project.id, { type: 'compile.ready', job: publicCompileJob(job), cached: true });
         return job;
       }
@@ -140,7 +146,7 @@ export class Compiler {
 
       let job: CompileJob;
       try {
-        job = this.insertJob(project, sourceHash, actor, 'queued');
+        job = this.insertJob(project, entryFile, sourceHash, actor, 'queued');
       } catch (error) {
         const concurrent = this.db.get<CompileJob>(
           `SELECT * FROM compile_jobs
@@ -205,6 +211,7 @@ export class Compiler {
 
   private insertJob(
     project: ProjectRecord,
+    entryFile: string,
     sourceHash: string,
     actor: ActorIdentity,
     status: CompileJob['status'],
@@ -220,7 +227,7 @@ export class Compiler {
       project_id: project.id,
       source_hash: sourceHash,
       status,
-      entry_file: project.entry_file,
+      entry_file: entryFile,
       pdf_path: pdfPath,
       synctex_path: synctexPath,
       log,
@@ -269,7 +276,7 @@ export class Compiler {
 
       let output: CommandResult;
       if (config.fakeCompiler) {
-        const pdfName = `${basename(project.entry_file, extname(project.entry_file))}.pdf`;
+        const pdfName = `${basename(job.entry_file, extname(job.entry_file))}.pdf`;
         await writeFile(join(outputDir, pdfName), createMinimalPdf(project.name));
         output = { code: 0, stdout: 'Fake compiler completed', stderr: '' };
       } else {
@@ -295,14 +302,14 @@ export class Compiler {
             '--outdir',
             '.overroot-output',
             '--',
-            project.entry_file
+            job.entry_file
           ],
           (config.compileTimeoutSeconds + 10) * 1000
         );
       }
 
       const log = trimLog([output.stdout, output.stderr].filter(Boolean).join('\n'));
-      const outputBase = basename(project.entry_file, extname(project.entry_file));
+      const outputBase = basename(job.entry_file, extname(job.entry_file));
       const generatedPdf = join(outputDir, `${outputBase}.pdf`);
       if (output.code !== 0 || !(await fileExists(generatedPdf))) {
         throw new CompileFailure(log || `Tectonic exited with status ${output.code}`);
