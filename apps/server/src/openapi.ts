@@ -122,10 +122,11 @@ export const openapi = {
     '/api/v1/projects/{projectHash}/compile': {
       post: {
         operationId: 'startCompile', tags: ['Compile'], parameters: [projectHash],
+        requestBody: { description: 'Source file to compile; omit for legacy project default.', content: { 'application/json': { schema: { type: 'object', properties: { filePath: { type: 'string', description: 'Existing project .tex path' } } } } } },
         responses: {
           '200': response('Cached result', 'CompileEnvelope'),
           '202': response('Compile queued', 'CompileEnvelope'),
-          '400': error('Entry file missing'),
+          '400': error('Compile source missing or not a .tex file'),
           '413': error('Project exceeds the compiler snapshot byte limit'),
           '429': error('Compiler queue capacity is full; retry after a pending job finishes')
         }

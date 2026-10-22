@@ -46,7 +46,8 @@ beforeEach(() => {
   harness.onDocumentStatus = null;
   harness.flush.mockResolvedValue(undefined);
   harness.api.getProject.mockResolvedValue({ project: { hash: 'project', name: 'Paper', entryFile: 'main.tex', role: 'owner', canWrite: true, canManage: true, memberCount: 1 } });
-  harness.api.listFiles.mockResolvedValue({ files: [] });
+  harness.api.listFiles.mockResolvedValue({ files: [{ id: 'main', path: 'main.tex', kind: 'text' }] });
+  harness.api.getFile.mockResolvedValue({ file: { id: 'main', path: 'main.tex', kind: 'text', content: '' } });
   harness.api.compilePdf.mockResolvedValue({ data: new ArrayBuffer(1) });
   harness.api.latestCompile.mockResolvedValue({ job: null, lastSuccessfulJob: null });
 });

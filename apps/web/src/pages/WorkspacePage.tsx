@@ -327,13 +327,18 @@ function ProjectWorkspace({ hash }: { hash: string }) {
 
   async function compile() {
     if (submitting.current || (currentJob.current && compileStage(currentJob.current) < 2)) return;
+    const filePath = selected?.path;
+    if (!filePath || selected?.kind !== 'text' || !filePath.toLowerCase().endsWith('.tex')) {
+      setError('Open a .tex source file before compiling.');
+      return;
+    }
     submitting.current = true;
     setSubmission('saving');
     setError(null);
     try {
       await editorFlush.current?.();
       setSubmission('starting');
-      const response = await api.compile(hash);
+      const response = await api.compile(hash, filePath);
       if (updateJob(response.job) && response.job.status === 'succeeded') void loadPdf(response.job);
     } catch (reason) { setError(reason instanceof Error ? reason.message : 'Could not compile'); }
     finally { submitting.current = false; setSubmission(null); }
@@ -393,7 +398,7 @@ function ProjectWorkspace({ hash }: { hash: string }) {
     <header className="workspace-head">
       <button className="icon-button workspace-back" type="button" onClick={() => navigate('/')} aria-label="Back to projects"><ArrowLeft size={17}/></button>
       <Brand subtitle={project.name} compact/>
-      <div className="project-crumb"><span>{project.name}</span><small>{project.role.toUpperCase()} · {project.entryFile}</small></div>
+      <div className="project-crumb"><span>{project.name}</span><small>{project.role.toUpperCase()}</small></div>
       <div className="presence-stack" aria-label="Active collaborators">{presence.slice(0, 4).map((person) => <span key={person.clientId} className="presence-avatar" style={{ '--person-color': person.color } as React.CSSProperties} title={person.name}>{initials(person.name)}</span>)}{presence.length > 4 && <span className="presence-more">+{presence.length - 4}</span>}</div>
       {activity && <div className="live-activity"><Bot size={13}/>{activity}</div>}
       <div className="workspace-actions">
@@ -416,7 +421,7 @@ function ProjectWorkspace({ hash }: { hash: string }) {
     </div>
     <main className="workspace-body">
       <div className={`workspace-tree-wrap ${treeOpen ? '' : 'is-collapsed'}`}>
-        <FileTree files={files} selectedId={selected?.id ?? null} entryFile={project.entryFile} canWrite={project.canWrite} onSelect={(file) => void selectFile(file)} onCreate={() => setNewFileOpen(true)} onUpload={(items) => void uploadFiles(items)} onFileMenu={setFileActions}/>
+        <FileTree files={files} selectedId={selected?.id ?? null} canWrite={project.canWrite} onSelect={(file) => void selectFile(file)} onCreate={() => setNewFileOpen(true)} onUpload={(items) => void uploadFiles(items)} onFileMenu={setFileActions}/>
       </div>
       <div ref={workspaceRef} className="editor-pdf" style={{ '--editor-percent': `${editorPercent}%` } as React.CSSProperties}>
         <div className="editor-wrap">
@@ -428,7 +433,7 @@ function ProjectWorkspace({ hash }: { hash: string }) {
             </div>
           </div>
           <Suspense fallback={<LoadingBlock label="Loading editor"/>}>{editorMode === 'manuscript'
-            ? <ManuscriptPane api={api} projectHash={hash} entryFile={project.entryFile} files={files} user={user} canWrite={project.canWrite} dark={theme.resolved === 'dark'} refreshKey={historyKey} onPresence={onPresence} onFlushReady={onFlushReady} onCursorChange={onCursorChange}/>
+            ? <ManuscriptPane api={api} projectHash={hash} entryFile={selected?.kind === 'text' ? selected.path : project.entryFile} files={files} user={user} canWrite={project.canWrite} dark={theme.resolved === 'dark'} refreshKey={historyKey} onPresence={onPresence} onFlushReady={onFlushReady} onCursorChange={onCursorChange}/>
             : <EditorPane api={api} projectHash={hash} file={selected} user={user} canWrite={project.canWrite} dark={theme.resolved === 'dark'} onPresence={onPresence} onFlushReady={onFlushReady} onCursorChange={onCursorChange}/>}</Suspense>
         </div>
         <div className="split-handle" role="separator" aria-orientation="vertical" onPointerDown={resizeStart}/>
@@ -442,10 +447,10 @@ function ProjectWorkspace({ hash }: { hash: string }) {
     <InlineError message={error ?? pdfError ?? pollError}/>
 
     <NewFileDialog open={newFileOpen} onClose={() => setNewFileOpen(false)} onCreate={createFile}/>
-    <FileActionsDialog open={Boolean(fileActions)} file={fileActions} entryFile={project.entryFile} canSetEntry={project.canManage} onClose={() => setFileActions(null)} onRename={renameFile} onDelete={async () => { const id = fileActions!.id; await api.deleteFile(hash, id); if (selected?.id === id) setSelected(null); await loadFiles(); }} onSetEntry={async () => { const response = await api.updateProject(hash, { entryFile: fileActions!.path }); setProject(response.project); }}/>
+    <FileActionsDialog open={Boolean(fileActions)} file={fileActions} onClose={() => setFileActions(null)} onRename={renameFile} onDelete={async () => { const id = fileActions!.id; await api.deleteFile(hash, id); if (selected?.id === id) setSelected(null); await loadFiles(); }} />
     <ShareDialog open={shareOpen} onClose={() => setShareOpen(false)} api={api} project={project}/>
     {project.canManage && <AgentDialog open={agentOpen} onClose={() => setAgentOpen(false)} api={api} project={project}/>} 
-    {project.canManage && <ProjectSettingsDialog open={settingsOpen} onClose={() => setSettingsOpen(false)} api={api} project={project} files={files} onChanged={setProject} onDeleted={() => navigate('/')}/>} 
+    {project.canManage && <ProjectSettingsDialog open={settingsOpen} onClose={() => setSettingsOpen(false)} api={api} project={project} onChanged={setProject} onDeleted={() => navigate('/')}/>}
     <HistoryDrawer open={historyOpen} onClose={() => setHistoryOpen(false)} api={api} projectHash={hash} file={editorMode === 'manuscript' ? files.find((file) => file.path === sourceLocation?.path) ?? selected : selected} canWrite={project.canWrite} refreshKey={historyKey}/>
     <CompileLogDrawer open={logOpen} onClose={() => setLogOpen(false)} status={job?.status ?? 'Not compiled'} log={job?.log ?? ''} error={job?.error ?? null}/>
     <Modal open={mobileMenuOpen} onClose={() => setMobileMenuOpen(false)} title={project.name} eyebrow="Workspace actions" size="small"><div className="mobile-action-list">
@@ -453,7 +458,7 @@ function ProjectWorkspace({ hash }: { hash: string }) {
       <button type="button" onClick={() => { setMobileMenuOpen(false); setShareOpen(true); }}><Users size={16}/><span><strong>Share</strong><small>Manage project collaborators</small></span></button>
       {project.canManage && <button type="button" onClick={() => { setMobileMenuOpen(false); setAgentOpen(true); }}><Braces size={16}/><span><strong>Agent access</strong><small>Create project-scoped credentials</small></span></button>}
       <button type="button" onClick={() => { setMobileMenuOpen(false); void exportZip(); }}><Download size={16}/><span><strong>Export ZIP</strong><small>Download all project source files</small></span></button>
-      {project.canManage && <button type="button" onClick={() => { setMobileMenuOpen(false); setSettingsOpen(true); }}><Settings2 size={16}/><span><strong>Project settings</strong><small>Name, main file, and deletion</small></span></button>}
+      {project.canManage && <button type="button" onClick={() => { setMobileMenuOpen(false); setSettingsOpen(true); }}><Settings2 size={16}/><span><strong>Project settings</strong><small>Name and deletion</small></span></button>}
       <div className="mobile-theme-row"><span><strong>Appearance</strong><small>Light, system, or dark</small></span><ThemeControl value={theme.preference} onChange={theme.setPreference}/></div>
       <button type="button" className="mobile-logout-action" onClick={() => void logout()}><LogOut size={16}/><span><strong>Log out</strong><small>End this local session</small></span></button>
     </div></Modal>

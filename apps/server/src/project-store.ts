@@ -220,15 +220,17 @@ export class ProjectStore {
   deleteFile(fileId: string): void {
     const file = this.getFileById(fileId);
     if (!file) throw new HttpError(404, 'File not found', 'file_not_found');
-    this.db.run('DELETE FROM files WHERE id = ?', fileId);
-    this.touch(file.project_id);
-  }
-
-  setEntryFile(projectId: string, pathInput: string): void {
-    const path = normalizeProjectPath(pathInput);
-    const file = this.getFile(projectId, path);
-    if (!file || file.kind !== 'text') throw new HttpError(400, 'Entry file must be an existing text file', 'invalid_entry_file');
-    this.db.run('UPDATE projects SET entry_file = ?, updated_at = ? WHERE id = ?', path, new Date().toISOString(), projectId);
+    this.db.transaction(() => {
+      this.db.run('DELETE FROM files WHERE id = ?', fileId);
+      const fallback = this.db.get<Pick<FileRecord, 'path'>>(
+        "SELECT path FROM files WHERE project_id = ? AND kind = 'text' ORDER BY path COLLATE NOCASE LIMIT 1",
+        file.project_id
+      );
+      this.db.run(
+        'UPDATE projects SET entry_file = CASE WHEN entry_file = ? THEN ? ELSE entry_file END, updated_at = ? WHERE id = ?',
+        file.path, fallback?.path ?? '', new Date().toISOString(), file.project_id
+      );
+    });
   }
 
   compileFileMetadata(projectId: string): Array<Pick<FileRecord, 'path' | 'kind' | 'revision_hash'> & { byte_length: number }> {

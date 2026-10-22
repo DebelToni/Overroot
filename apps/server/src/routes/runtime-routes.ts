@@ -16,8 +16,9 @@ export function registerRuntimeRoutes(app: FastifyInstance, context: AppContext)
     const { hash } = z.object({ hash: z.string() }).parse(request.params);
     const access = projectAccess(context.db, actor, hash);
     requireWrite(access);
-    const job = await context.compiler.request(access.project, actorIdentity(actor));
-    audit(context.db, access.project.id, actorIdentity(actor), 'compile.requested', { jobId: job.id, sourceHash: job.source_hash });
+    const { filePath } = z.object({ filePath: z.string().min(1).optional() }).parse(request.body ?? {});
+    const job = await context.compiler.request(access.project, actorIdentity(actor), filePath);
+    audit(context.db, access.project.id, actorIdentity(actor), 'compile.requested', { jobId: job.id, sourceHash: job.source_hash, filePath: job.entry_file });
     return reply.code(job.status === 'succeeded' ? 200 : 202).send({ job: publicCompileJob(job) });
   });
 
