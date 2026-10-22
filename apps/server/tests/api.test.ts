@@ -217,6 +217,60 @@ describe('Overroot API', () => {
     expect((await app.inject({ method: 'DELETE', url: `${base}/files/${main.id}`, headers: bearer(editorToken) })).statusCode).toBe(204);
   });
 
+  it('keeps the legacy compile default on an eligible .tex across deletion and recreation', async () => {
+    const { app, adminToken } = harness!;
+    const project = await createProject(app, adminToken);
+    const base = `/api/v1/projects/${project.hash}`;
+    const headers = bearer(adminToken);
+    const add = async (path: string) => {
+      const result = await app.inject({ method: 'POST', url: `${base}/files`, headers, payload: { path, content: path } });
+      expect(result.statusCode).toBe(201);
+      return result.json().file.id as string;
+    };
+    const remove = async (id: string) => {
+      expect((await app.inject({ method: 'DELETE', url: `${base}/files/${id}`, headers })).statusCode).toBe(204);
+    };
+    const defaultPath = async () => (await app.inject({ method: 'GET', url: base, headers })).json().project.entryFile as string;
+    const compileDefault = () => app.inject({ method: 'POST', url: `${base}/compile`, headers });
+    const tree = await app.inject({ method: 'GET', url: `${base}/files`, headers });
+    const mainId = tree.json().files.find((file: any) => file.path === 'main.tex').id as string;
+    await add('references.bib');
+    await add('notes.md');
+    const alternateId = await add('standalone.tex');
+    await remove(mainId);
+    expect(await defaultPath()).toBe('standalone.tex');
+    const alternate = await compileDefault();
+    expect(alternate.statusCode).toBe(202);
+    expect(alternate.json().job.entryFile).toBe('standalone.tex');
+    await remove(alternateId);
+    expect(await defaultPath()).toBe('');
+    expect((await compileDefault()).statusCode).toBe(400);
+    const freshId = await add('fresh.tex');
+    expect(await defaultPath()).toBe('fresh.tex');
+    const fresh = await compileDefault();
+    expect(fresh.statusCode).toBe(202);
+    expect(fresh.json().job.entryFile).toBe('fresh.tex');
+    const renamed = await app.inject({ method: 'PATCH', url: `${base}/files/${freshId}`, headers, payload: { path: 'fresh.bib' } });
+    expect(renamed.statusCode).toBe(200);
+    expect(await defaultPath()).toBe('');
+    await add('new-source.tex');
+    expect(await defaultPath()).toBe('new-source.tex');
+  });
+
+  it('rejects retired project entryFile updates rather than silently accepting them', async () => {
+    const { app, adminToken } = harness!;
+    const project = await createProject(app, adminToken);
+    const base = `/api/v1/projects/${project.hash}`;
+    const headers = bearer(adminToken);
+    const source = await app.inject({ method: 'POST', url: `${base}/files`, headers, payload: { path: 'other.tex', content: 'Other' } });
+    expect(source.statusCode).toBe(201);
+    const retired = await app.inject({ method: 'PATCH', url: base, headers, payload: { name: 'Should not change', entryFile: 'other.tex' } });
+    expect(retired.statusCode).toBe(400);
+    expect(retired.json().error.code).toBe('entry_file_retired');
+    const unchanged = await app.inject({ method: 'GET', url: base, headers });
+    expect(unchanged.json().project).toMatchObject({ name: project.name, entryFile: 'main.tex' });
+  });
+
   it('compiles, caches, and serves authenticated PDFs', async () => {
     const { app, adminToken, context } = harness!;
     const project = await createProject(app, adminToken);

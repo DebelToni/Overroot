@@ -147,6 +147,7 @@ export class ProjectStore {
     const file = this.db.transaction(() => {
       const created = this.insertFile(projectId, path, content, mimeType, actor, now);
       this.touch(projectId, now);
+      this.repairEntryFile(projectId);
       return created;
     });
     return file;
@@ -213,6 +214,7 @@ export class ProjectStore {
         now,
         file.project_id
       );
+      this.repairEntryFile(file.project_id);
     });
     return { ...file, path: newPath, revision_hash: hash, updated_at: now };
   }
@@ -222,14 +224,8 @@ export class ProjectStore {
     if (!file) throw new HttpError(404, 'File not found', 'file_not_found');
     this.db.transaction(() => {
       this.db.run('DELETE FROM files WHERE id = ?', fileId);
-      const fallback = this.db.get<Pick<FileRecord, 'path'>>(
-        "SELECT path FROM files WHERE project_id = ? AND kind = 'text' ORDER BY path COLLATE NOCASE LIMIT 1",
-        file.project_id
-      );
-      this.db.run(
-        'UPDATE projects SET entry_file = CASE WHEN entry_file = ? THEN ? ELSE entry_file END, updated_at = ? WHERE id = ?',
-        file.path, fallback?.path ?? '', new Date().toISOString(), file.project_id
-      );
+      this.touch(file.project_id);
+      this.repairEntryFile(file.project_id);
     });
   }
 
@@ -316,6 +312,23 @@ export class ProjectStore {
       actor.name,
       now
     );
+  }
+
+  // The stored path is only a legacy compile/manuscript default, not an owner-controlled root.
+  // Keep it compilable as files are added, renamed or deleted (including an empty project).
+  private repairEntryFile(projectId: string): void {
+    const project = this.db.get<Pick<ProjectRecord, 'entry_file'>>('SELECT entry_file FROM projects WHERE id = ?', projectId)!;
+    const eligible = "kind = 'text' AND lower(path) LIKE '%.tex'";
+    const current = this.db.get<Pick<FileRecord, 'path'>>(
+      `SELECT path FROM files WHERE project_id = ? AND path = ? AND ${eligible}`,
+      projectId, project.entry_file
+    );
+    if (current) return;
+    const fallback = this.db.get<Pick<FileRecord, 'path'>>(
+      `SELECT path FROM files WHERE project_id = ? AND ${eligible} ORDER BY path COLLATE NOCASE LIMIT 1`,
+      projectId
+    );
+    this.db.run('UPDATE projects SET entry_file = ? WHERE id = ?', fallback?.path ?? '', projectId);
   }
 
   private touch(projectId: string, now = new Date().toISOString()): void {
