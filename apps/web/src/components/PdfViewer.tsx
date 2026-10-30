@@ -166,7 +166,7 @@ export function PdfViewer({
     if (!focusMode || rendering || !pageCount || !root || !content) return;
 
     type Pinch = {
-      distance: number; zoom: number; nextZoom: number;
+      distance: number; zoom: number; nextZoom: number; ids: [number, number];
       anchor: HTMLElement; x: number; y: number;
       sizes: { element: HTMLElement; width: number; height: number }[];
     };
@@ -190,8 +190,14 @@ export function PdfViewer({
       setZoom(next);
       persistViewState();
     };
+    const samePair = (touches: TouchList) => pinch && touches.length === 2 &&
+      [...touches].every((touch) => pinch!.ids.includes(touch.identifier));
     const start = (event: TouchEvent) => {
-      if (event.touches.length !== 2 || pinch) return;
+      if (pinch) {
+        if (!samePair(event.touches)) finish();
+        return;
+      }
+      if (event.touches.length !== 2) return;
       const span = distance(event.touches);
       if (!span) return;
       const point = midpoint(event.touches);
@@ -202,6 +208,7 @@ export function PdfViewer({
       const currentZoom = zoomRef.current;
       pinch = {
         distance: span, zoom: currentZoom, nextZoom: currentZoom, anchor,
+        ids: [event.touches[0]!.identifier, event.touches[1]!.identifier],
         x: (root.scrollLeft + point.x - anchor.offsetLeft) / currentZoom,
         y: (root.scrollTop + point.y - anchor.offsetTop) / currentZoom,
         sizes: elements.map((element) => ({ element, width: parseFloat(element.style.width), height: parseFloat(element.style.height) }))
@@ -209,7 +216,11 @@ export function PdfViewer({
       canPersist.current = false;
     };
     const move = (event: TouchEvent) => {
-      if (pinch && event.touches.length === 2) {
+      if (!samePair(event.touches)) {
+        finish();
+        return;
+      }
+      if (pinch) {
         event.preventDefault();
         const point = midpoint(event.touches);
         const next = Math.min(2.5, Math.max(0.5, pinch.zoom * distance(event.touches) / pinch.distance));
@@ -226,18 +237,17 @@ export function PdfViewer({
       }
     };
     const end = (event: TouchEvent) => {
-      if (event.touches.length === 2) return;
-      finish();
+      if (!samePair(event.touches)) finish();
     };
     root.addEventListener('touchstart', start, { passive: false });
     root.addEventListener('touchmove', move, { passive: false });
     root.addEventListener('touchend', end);
-    root.addEventListener('touchcancel', end);
+    root.addEventListener('touchcancel', finish);
     return () => {
       root.removeEventListener('touchstart', start);
       root.removeEventListener('touchmove', move);
       root.removeEventListener('touchend', end);
-      root.removeEventListener('touchcancel', end);
+      root.removeEventListener('touchcancel', finish);
       finish();
     };
   }, [focusMode, rendering, pageCount, sourceHighlights]);

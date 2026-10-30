@@ -64,7 +64,10 @@ async function gestureViewer(focusMode = true, numPages = 1) {
   parser.getDocument.mockImplementation(() => ({ promise: Promise.resolve(document(numPages)), destroy: vi.fn() }));
   const props = properties();
   const view = render(<PdfViewer {...props} focusMode={focusMode}/>);
-  await waitFor(() => expect(props.onDocumentStatus).toHaveBeenCalledWith(props.data, 'ready'));
+  // The callback runs before React commits rendering=false and installs touch listeners.
+  await act(async () => {
+    await waitFor(() => expect(props.onDocumentStatus).toHaveBeenCalledWith(props.data, 'ready'));
+  });
   const root = view.container.querySelector<HTMLDivElement>('.pdf-scroll')!;
   const page = screen.getByLabelText('PDF page 1');
   vi.spyOn(root, 'getBoundingClientRect').mockReturnValue({ left: 10, top: 20 } as DOMRect);
@@ -117,6 +120,7 @@ it('commits the preview when leaving fullscreen during a pinch', async () => {
   const { root, props, rerender } = await gestureViewer();
   fireEvent.touchStart(root, { touches: fingers(60, 160) });
   fireEvent.touchMove(root, { touches: fingers(10, 210) });
+  expect(screen.getByLabelText('PDF page 1').style.width).toBe('400px');
   rerender(<PdfViewer {...props} focusMode={false}/>);
   await screen.findByText('200%');
   await waitFor(() => expect(parser.getDocument).toHaveBeenCalledTimes(2));
@@ -135,6 +139,43 @@ it.each([
   fireEvent.touchCancel(root, { touches: [] });
   await screen.findByText(readout);
   await waitFor(() => expect(parser.getDocument).toHaveBeenCalledTimes(2));
+});
+
+it('ends a pinch when a third finger joins and ignores a replacement pair', async () => {
+  const { root } = await gestureViewer();
+  fireEvent.touchStart(root, { touches: fingers(60, 160) });
+  fireEvent.touchMove(root, { touches: fingers(10, 210) });
+  const third = { identifier: 3, clientX: 300, clientY: 170 };
+  fireEvent.touchStart(root, { touches: [...fingers(10, 210), third] });
+  const replacement = [fingers(10, 210)[1]!, third];
+  fireEvent.touchEnd(root, { touches: replacement });
+  fireEvent.touchMove(root, { touches: [replacement[0]!, { ...third, clientX: 500 }] });
+  await screen.findByText('200%');
+  await waitFor(() => expect(parser.getDocument).toHaveBeenCalledTimes(2));
+  expect(screen.getByLabelText('PDF page 1').style.width).toBe('400px');
+});
+
+it.each(['touchEnd', 'touchMove', 'touchCancel'] as const)('ends the active pinch on %s with a changed or cancelled pair', async (event) => {
+  const { root } = await gestureViewer();
+  fireEvent.touchStart(root, { touches: fingers(60, 160) });
+  fireEvent.touchMove(root, { touches: fingers(10, 210) });
+  const remaining = fingers(10, 210);
+  if (event !== 'touchCancel') remaining[1]!.identifier = 3;
+  fireEvent[event](root, { touches: remaining });
+  await screen.findByText('200%');
+  await waitFor(() => expect(parser.getDocument).toHaveBeenCalledTimes(2));
+  fireEvent.touchMove(root, { touches: fingers(-100, 300) });
+  expect(screen.getByLabelText('PDF page 1').style.width).toBe('400px');
+  expect(parser.getDocument).toHaveBeenCalledTimes(2);
+});
+
+it('accepts reordered touches belonging to the same active pair', async () => {
+  const { root, page } = await gestureViewer();
+  fireEvent.touchStart(root, { touches: fingers(60, 160) });
+  fireEvent.touchMove(root, { touches: fingers(10, 210).reverse() });
+  expect(page.style.width).toBe('400px');
+  fireEvent.touchEnd(root, { touches: [] });
+  await screen.findByText('200%');
 });
 
 it('leaves ordinary one-finger scrolling to the browser', async () => {
