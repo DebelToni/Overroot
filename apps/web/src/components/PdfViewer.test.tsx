@@ -1,4 +1,4 @@
-import { act, cleanup, render, screen, waitFor } from '@testing-library/react';
+import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { afterEach, beforeEach, expect, it, vi } from 'vitest';
 import type { ApiClient } from '../lib/api';
 import { PdfViewer } from './PdfViewer';
@@ -12,8 +12,8 @@ function deferred<T>() {
   const promise = new Promise<T>((done, fail) => { resolve = done; reject = fail; });
   return { promise, resolve, reject };
 }
-function document() {
-  return { numPages: 1, getPage: vi.fn(async () => ({ getViewport: () => ({ width: 200, height: 300 }) })) };
+function document(numPages = 1) {
+  return { numPages, getPage: vi.fn(async () => ({ getViewport: ({ scale }: { scale: number }) => ({ width: 200 * scale, height: 300 * scale }) })) };
 }
 function properties(data = new ArrayBuffer(1)) {
   return {
@@ -24,6 +24,7 @@ function properties(data = new ArrayBuffer(1)) {
 }
 beforeEach(() => {
   vi.resetAllMocks();
+  window.localStorage.clear();
   vi.spyOn(HTMLCanvasElement.prototype, 'getContext').mockReturnValue(null);
   vi.stubGlobal('requestAnimationFrame', (callback: FrameRequestCallback) => { callback(0); return 1; });
 });
@@ -57,6 +58,101 @@ it('does not report a cancelled old parser failure against replacement bytes', a
   await act(async () => { first.reject(new Error('Old PDF was invalid')); });
   expect(props.onDocumentStatus).not.toHaveBeenCalledWith(props.data, 'failed');
   expect(screen.queryByText('Old PDF was invalid')).not.toBeInTheDocument();
+});
+
+async function gestureViewer(focusMode = true, numPages = 1) {
+  parser.getDocument.mockImplementation(() => ({ promise: Promise.resolve(document(numPages)), destroy: vi.fn() }));
+  const props = properties();
+  const view = render(<PdfViewer {...props} focusMode={focusMode}/>);
+  await waitFor(() => expect(props.onDocumentStatus).toHaveBeenCalledWith(props.data, 'ready'));
+  const root = view.container.querySelector<HTMLDivElement>('.pdf-scroll')!;
+  const page = screen.getByLabelText('PDF page 1');
+  vi.spyOn(root, 'getBoundingClientRect').mockReturnValue({ left: 10, top: 20 } as DOMRect);
+  [...view.container.querySelectorAll<HTMLElement>('.pdf-page')].forEach((element, index, elements) => {
+    Object.defineProperties(element, {
+      offsetLeft: { get: () => 16 },
+      offsetTop: { get: () => 35 + elements.slice(0, index).reduce((top, previous) => top + parseFloat(previous.style.height) + 18, 0) },
+      offsetHeight: { get: () => parseFloat(element.style.height) }
+    });
+  });
+  root.scrollLeft = 60;
+  root.scrollTop = 90;
+  return { ...view, root, page, props };
+}
+const fingers = (left: number, right: number, y = 170) => [
+  { identifier: 1, clientX: left, clientY: y }, { identifier: 2, clientX: right, clientY: y }
+];
+
+it('previews a fullscreen pinch at its moving midpoint and renders sharp pages only on release', async () => {
+  const { root, page } = await gestureViewer();
+  expect(fireEvent.touchStart(root, { touches: fingers(60, 160) })).toBe(false);
+  fireEvent.touchMove(root, { touches: fingers(30, 230, 200) });
+  expect(page.style.width).toBe('400px');
+  expect(page.querySelector('canvas')!.style.height).toBe('600px');
+  expect(root.scrollLeft).toBe(184);
+  expect(root.scrollTop).toBe(265);
+  expect(parser.getDocument).toHaveBeenCalledTimes(1);
+  fireEvent.touchEnd(root, { touches: [] });
+  await waitFor(() => expect(screen.getByText('200%')).toBeInTheDocument());
+  await waitFor(() => expect(parser.getDocument).toHaveBeenCalledTimes(2));
+  expect(screen.getByLabelText('PDF page 1').style.width).toBe('400px');
+  expect(root.scrollLeft).toBe(184);
+  expect(root.scrollTop).toBe(265);
+  expect(JSON.parse(window.localStorage.getItem('overroot.pdfView.pdf-validation-test')!)).toMatchObject({ zoom: 2, scrollLeft: 184, scrollTop: 265 });
+});
+
+it('keeps a later page under the fingers as preceding pages grow', async () => {
+  const { root } = await gestureViewer(true, 2);
+  root.scrollTop = 400;
+  fireEvent.touchStart(root, { touches: fingers(60, 160) });
+  fireEvent.touchMove(root, { touches: fingers(10, 210) });
+  expect(root.scrollTop).toBe(897);
+  fireEvent.touchEnd(root, { touches: [] });
+  await waitFor(() => expect(parser.getDocument).toHaveBeenCalledTimes(2));
+  expect(root.scrollTop).toBe(897);
+  expect(screen.getByLabelText('PDF page 2').style.height).toBe('600px');
+});
+
+it('commits the preview when leaving fullscreen during a pinch', async () => {
+  const { root, props, rerender } = await gestureViewer();
+  fireEvent.touchStart(root, { touches: fingers(60, 160) });
+  fireEvent.touchMove(root, { touches: fingers(10, 210) });
+  rerender(<PdfViewer {...props} focusMode={false}/>);
+  await screen.findByText('200%');
+  await waitFor(() => expect(parser.getDocument).toHaveBeenCalledTimes(2));
+  expect(screen.getByLabelText('PDF page 1').style.width).toBe('400px');
+  expect(fireEvent.touchStart(root, { touches: fingers(60, 160) })).toBe(true);
+});
+
+it.each([
+  { left: -140, right: 360, width: '500px', readout: '250%' },
+  { left: 105, right: 115, width: '100px', readout: '50%' }
+])('clamps pinch zoom to $readout and commits on cancellation', async ({ left, right, width, readout }) => {
+  const { root, page } = await gestureViewer();
+  fireEvent.touchStart(root, { touches: fingers(60, 160) });
+  fireEvent.touchMove(root, { touches: fingers(left, right) });
+  expect(page.style.width).toBe(width);
+  fireEvent.touchCancel(root, { touches: [] });
+  await screen.findByText(readout);
+  await waitFor(() => expect(parser.getDocument).toHaveBeenCalledTimes(2));
+});
+
+it('leaves ordinary one-finger scrolling to the browser', async () => {
+  const { root, page } = await gestureViewer();
+  expect(fireEvent.touchStart(root, { touches: fingers(60, 160).slice(0, 1) })).toBe(true);
+  expect(fireEvent.touchMove(root, { touches: fingers(80, 180).slice(0, 1) })).toBe(true);
+  fireEvent.scroll(root, { target: { scrollLeft: 100, scrollTop: 150 } });
+  expect(page.style.width).toBe('200px');
+  expect(parser.getDocument).toHaveBeenCalledTimes(1);
+});
+
+it('does not intercept pinches outside fullscreen', async () => {
+  const { root, page } = await gestureViewer(false);
+  expect(fireEvent.touchStart(root, { touches: fingers(60, 160) })).toBe(true);
+  expect(fireEvent.touchMove(root, { touches: fingers(10, 210) })).toBe(true);
+  fireEvent.touchEnd(root, { touches: [] });
+  expect(page.style.width).toBe('200px');
+  expect(parser.getDocument).toHaveBeenCalledTimes(1);
 });
 
 it('uses the latest validation callback without restarting a pending document', async () => {

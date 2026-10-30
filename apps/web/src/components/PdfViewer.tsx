@@ -160,6 +160,88 @@ export function PdfViewer({
     };
   }, [projectHash]);
 
+  useEffect(() => {
+    const root = scroller.current;
+    const content = pages.current;
+    if (!focusMode || rendering || !pageCount || !root || !content) return;
+
+    type Pinch = {
+      distance: number; zoom: number; nextZoom: number;
+      anchor: HTMLElement; x: number; y: number;
+      sizes: { element: HTMLElement; width: number; height: number }[];
+    };
+    let pinch: Pinch | null = null;
+    const midpoint = (touches: TouchList) => {
+      const bounds = root.getBoundingClientRect();
+      return {
+        x: (touches[0]!.clientX + touches[1]!.clientX) / 2 - bounds.left,
+        y: (touches[0]!.clientY + touches[1]!.clientY) / 2 - bounds.top
+      };
+    };
+    const distance = (touches: TouchList) => Math.hypot(
+      touches[0]!.clientX - touches[1]!.clientX, touches[0]!.clientY - touches[1]!.clientY
+    );
+    const finish = () => {
+      if (!pinch) return;
+      const next = pinch.nextZoom;
+      pinch = null;
+      zoomRef.current = next;
+      canPersist.current = true;
+      setZoom(next);
+      persistViewState();
+    };
+    const start = (event: TouchEvent) => {
+      if (event.touches.length !== 2 || pinch) return;
+      const span = distance(event.touches);
+      if (!span) return;
+      const point = midpoint(event.touches);
+      const elements = [...content.querySelectorAll<HTMLElement>('.pdf-page')];
+      const anchor = elements.find((element) => element.offsetTop + element.offsetHeight > root.scrollTop + point.y) ?? elements.at(-1);
+      if (!anchor) return;
+      event.preventDefault();
+      const currentZoom = zoomRef.current;
+      pinch = {
+        distance: span, zoom: currentZoom, nextZoom: currentZoom, anchor,
+        x: (root.scrollLeft + point.x - anchor.offsetLeft) / currentZoom,
+        y: (root.scrollTop + point.y - anchor.offsetTop) / currentZoom,
+        sizes: elements.map((element) => ({ element, width: parseFloat(element.style.width), height: parseFloat(element.style.height) }))
+      };
+      canPersist.current = false;
+    };
+    const move = (event: TouchEvent) => {
+      if (pinch && event.touches.length === 2) {
+        event.preventDefault();
+        const point = midpoint(event.touches);
+        const next = Math.min(2.5, Math.max(0.5, pinch.zoom * distance(event.touches) / pinch.distance));
+        // Resize the existing canvases for a smooth preview; render sharp pixels only on release.
+        for (const { element, width, height } of pinch.sizes) {
+          const canvas = element.querySelector('canvas')!;
+          element.style.width = canvas.style.width = `${width * next / pinch.zoom}px`;
+          element.style.height = canvas.style.height = `${height * next / pinch.zoom}px`;
+        }
+        root.scrollLeft = pinch.anchor.offsetLeft + pinch.x * next - point.x;
+        root.scrollTop = pinch.anchor.offsetTop + pinch.y * next - point.y;
+        pinch.nextZoom = next;
+        paintPdfHighlights(content, sourceHighlights, next);
+      }
+    };
+    const end = (event: TouchEvent) => {
+      if (event.touches.length === 2) return;
+      finish();
+    };
+    root.addEventListener('touchstart', start, { passive: false });
+    root.addEventListener('touchmove', move, { passive: false });
+    root.addEventListener('touchend', end);
+    root.addEventListener('touchcancel', end);
+    return () => {
+      root.removeEventListener('touchstart', start);
+      root.removeEventListener('touchmove', move);
+      root.removeEventListener('touchend', end);
+      root.removeEventListener('touchcancel', end);
+      finish();
+    };
+  }, [focusMode, rendering, pageCount, sourceHighlights]);
+
   function visiblePage() {
     const root = scroller.current;
     if (!root) return 1;
