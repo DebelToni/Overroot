@@ -346,6 +346,7 @@ button:disabled { cursor: default; opacity: .42; }
 .pdf-viewer--focus { position: fixed; z-index: 100; inset: 0; width: 100vw; height: 100dvh; grid-template-rows: 0 minmax(0, 1fr); }
 .workspace-shell--pdf-focus .pdf-wrap { container-type: normal; overflow: visible; }
 .pdf-viewer--focus .pdf-toolbar { visibility: hidden; }
+.pdf-viewer--focus .pdf-scroll { touch-action: pan-x pan-y; }
 .pdf-viewer--focus .pdf-pages { padding-top: 35px; }
 
 @container (max-width: 400px) {
