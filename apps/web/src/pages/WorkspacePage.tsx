@@ -21,8 +21,8 @@ import { ApiError } from '../lib/api';
 import { initials, relativeTime } from '../lib/format';
 import { useSession } from '../lib/session';
 import {
-  loadEditorPercent, loadTreeOpen, MAX_EDITOR_PERCENT, MIN_EDITOR_PERCENT,
-  storeEditorPercent, storeTreeOpen
+  loadEditorPercent, loadTreeOpen, loadWorkspaceSource, MAX_EDITOR_PERCENT, MIN_EDITOR_PERCENT,
+  storeEditorPercent, storeTreeOpen, storeWorkspaceSource
 } from '../lib/workspace-state';
 import type { CompileJob, ProjectDetail, ProjectEvent, ProjectFile, SourceLocation } from '../types';
 
@@ -187,13 +187,17 @@ function ProjectWorkspace({ hash }: { hash: string }) {
       setProject(projectResponse.project);
       setFiles(fileResponse.files);
       const accepted = updateJob(compileResponse.job);
-      const initial = fileResponse.files.find((file) => file.path === projectResponse.project.entryFile) ?? fileResponse.files[0];
+      const savedSource = user?.id ? loadWorkspaceSource(user.id, hash) : null;
+      const initial = fileResponse.files.find((file) => file.id === savedSource?.fileId)
+        ?? fileResponse.files.find((file) => file.path === projectResponse.project.entryFile)
+        ?? fileResponse.files[0];
       if (initial) setSelected((await api.getFile(hash, initial.id)).file);
+      setEditorMode(savedSource?.mode ?? 'manuscript');
       const previewJob = compileResponse.job?.status === 'succeeded' ? compileResponse.job : compileResponse.lastSuccessfulJob;
       if (previewJob?.hasPdf && (accepted || !currentJob.current?.hasPdf)) await loadPdf(previewJob);
     } catch (reason) { setError(reason instanceof Error ? reason.message : 'Could not open project'); }
     finally { setLoading(false); }
-  }, [api, hash, loadPdf, updateJob]);
+  }, [api, hash, loadPdf, updateJob, user?.id]);
 
   const reconcile = useCallback(async () => {
     try {
@@ -212,6 +216,11 @@ function ProjectWorkspace({ hash }: { hash: string }) {
   }, [api, hash, loadFiles, loadPdf, navigate, updateJob]);
 
   useEffect(() => { void loadProject(); }, [loadProject]);
+  useEffect(() => {
+    if (!loading && user?.id && selected?.id) {
+      storeWorkspaceSource(user.id, hash, { fileId: selected.id, mode: editorMode });
+    }
+  }, [loading, user?.id, hash, selected?.id, editorMode]);
   useEffect(() => () => { if (activityTimer.current != null) clearTimeout(activityTimer.current); }, []);
 
   const handleEvent = useCallback((event: ProjectEvent) => {
