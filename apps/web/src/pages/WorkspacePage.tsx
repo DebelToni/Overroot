@@ -56,6 +56,7 @@ function ProjectWorkspace({ hash }: { hash: string }) {
   const [pdfError, setPdfError] = useState<string | null>(null);
   const [activity, setActivity] = useState<string | null>(null);
   const [presence, setPresence] = useState<PresenceUser[]>([]);
+  const [presenceOpen, setPresenceOpen] = useState(false);
   const [historyKey, setHistoryKey] = useState(0);
   const [treeOpen, setTreeOpen] = useState(loadTreeOpen);
   const [mobilePane, setMobilePane] = useState<'files' | 'editor' | 'pdf'>('editor');
@@ -399,7 +400,11 @@ function ProjectWorkspace({ hash }: { hash: string }) {
       <button className="icon-button workspace-back" type="button" onClick={() => navigate('/')} aria-label="Back to projects"><ArrowLeft size={17}/></button>
       <Brand subtitle={project.name} compact/>
       <div className="project-crumb"><span>{project.name}</span><small>{project.role.toUpperCase()}</small></div>
-      <div className="presence-stack" aria-label="Active collaborators">{presence.slice(0, 4).map((person) => <span key={person.clientId} className="presence-avatar" style={{ '--person-color': person.color } as React.CSSProperties} title={person.name}>{initials(person.name)}</span>)}{presence.length > 4 && <span className="presence-more">+{presence.length - 4}</span>}</div>
+      <button className="presence-trigger" type="button" aria-label={`Who's online (${presence.length})`} aria-haspopup="dialog" onClick={() => setPresenceOpen(true)}>
+        <span className="presence-stack" aria-hidden="true">{presence.slice(0, 4).map((person) => <span key={person.clientId} className="presence-avatar" style={{ '--person-color': person.color } as React.CSSProperties} title={person.name}>{initials(person.name)}</span>)}{presence.length > 4 && <span className="presence-more">+{presence.length - 4}</span>}{presence.length === 0 && <Users size={17}/>}</span>
+        <Users className="presence-mobile-icon" size={17} aria-hidden="true"/>
+        <span aria-hidden="true">{presence.length}<span className="presence-online-label"> online</span></span>
+      </button>
       {activity && <div className="live-activity"><Bot size={13}/>{activity}</div>}
       <div className="workspace-actions">
         <button className="plain-button workspace-action-text" type="button" aria-label="History" title="History" onClick={() => setHistoryOpen(true)}><History size={14}/> History</button>
@@ -453,6 +458,12 @@ function ProjectWorkspace({ hash }: { hash: string }) {
     {project.canManage && <ProjectSettingsDialog open={settingsOpen} onClose={() => setSettingsOpen(false)} api={api} project={project} onChanged={setProject} onDeleted={() => navigate('/')}/>}
     <HistoryDrawer open={historyOpen} onClose={() => setHistoryOpen(false)} api={api} projectHash={hash} file={editorMode === 'manuscript' ? files.find((file) => file.path === sourceLocation?.path) ?? selected : selected} canWrite={project.canWrite} refreshKey={historyKey}/>
     <CompileLogDrawer open={logOpen} onClose={() => setLogOpen(false)} status={job?.status ?? 'Not compiled'} log={job?.log ?? ''} error={job?.error ?? null}/>
+    <Modal open={presenceOpen} onClose={() => setPresenceOpen(false)} title="Who's online" size="small">
+      {presence.length ? <ul className="presence-list" aria-label="Online collaborators">{presence.map((person) => <li key={person.clientId}>
+        <span className="presence-avatar" style={{ '--person-color': person.color } as React.CSSProperties} aria-hidden="true">{initials(person.name)}</span>
+        <span>{person.name}</span>
+      </li>)}</ul> : <p>No active collaborators.</p>}
+    </Modal>
     <Modal open={mobileMenuOpen} onClose={() => setMobileMenuOpen(false)} title={project.name} eyebrow="Workspace actions" size="small"><div className="mobile-action-list">
       <button type="button" onClick={() => { setMobileMenuOpen(false); setHistoryOpen(true); }}><History size={16}/><span><strong>History</strong><small>Review and restore file revisions</small></span></button>
       <button type="button" onClick={() => { setMobileMenuOpen(false); setShareOpen(true); }}><Users size={16}/><span><strong>Share</strong><small>Manage project collaborators</small></span></button>

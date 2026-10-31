@@ -1,4 +1,4 @@
-import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { act, cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { MemoryRouter, Route, Routes } from 'react-router-dom';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { WorkspacePage } from './WorkspacePage';
@@ -7,20 +7,22 @@ const harness = vi.hoisted(() => ({
   api: { getProject: vi.fn(), listFiles: vi.fn(), latestCompile: vi.fn(), getFile: vi.fn(), createFile: vi.fn(), renameFile: vi.fn(), compile: vi.fn() },
   flush: vi.fn(async () => {}),
   user: { id: 'writer', username: 'writer', displayName: 'Writer', isAdmin: false, createdAt: '' },
+  onPresence: null as ((users: { clientId: number; name: string; color: string }[]) => void) | null,
   onEvent: null as ((event: { type: string; fileId: string }) => void) | null
 }));
 vi.mock('../lib/session', () => ({ useSession: () => ({ api: harness.api, user: harness.user, clearSession: vi.fn() }) }));
 vi.mock('../hooks/useTheme', () => ({ useTheme: () => ({ preference: 'light', resolved: 'light', setPreference: vi.fn() }) }));
 vi.mock('../hooks/useProjectEvents', () => ({ useProjectEvents: (_api: unknown, _hash: string, handler: typeof harness.onEvent) => { harness.onEvent = handler; } }));
 vi.mock('../components/PdfViewer', () => ({ PdfViewer: () => <div>PDF test preview</div> }));
-vi.mock('../components/Modal', () => ({ Modal: ({ open, children }: { open: boolean; children: import('react').ReactNode }) => open ? <div role="dialog">{children}</div> : null }));
+vi.mock('../components/Modal', () => ({ Modal: ({ open, title, onClose, children }: { open: boolean; title: string; onClose: () => void; children: import('react').ReactNode }) => open ? <div role="dialog" aria-label={title}><button onClick={onClose}>Close dialog</button>{children}</div> : null }));
 vi.mock('../components/WorkspaceDialogs', async (importOriginal) => {
   const { NewFileDialog, FileActionsDialog } = await importOriginal<typeof import('../components/WorkspaceDialogs')>();
   return { AgentDialog: () => null, CompileLogDrawer: () => null, FileActionsDialog, HistoryDrawer: () => null, NewFileDialog, ProjectSettingsDialog: () => null, ShareDialog: () => null };
 });
 vi.mock('../components/ManuscriptPane', async () => {
   const { useEffect } = await import('react');
-  return { ManuscriptPane: function Pane({ onFlushReady }: { onFlushReady: (flush: (() => Promise<void>) | null) => void }) {
+  return { ManuscriptPane: function Pane({ onFlushReady, onPresence }: { onFlushReady: (flush: (() => Promise<void>) | null) => void; onPresence: NonNullable<typeof harness.onPresence> }) {
+    useEffect(() => { harness.onPresence = onPresence; }, [onPresence]);
     useEffect(() => { onFlushReady(() => harness.flush()); return () => onFlushReady(null); }, [onFlushReady]);
     return <div>Manuscript test editor</div>;
   } };
@@ -71,6 +73,46 @@ function startFileMutation(operation: string, path: string, content: string, ren
     fireEvent.change(upload, { target: { files: [source] } });
   }
 }
+
+describe('online collaborators', () => {
+  const people = ['Alice Smith', 'Alice Stone', 'Bo', 'Charlie', 'Dana', 'Eli'].map((name, clientId) => ({ clientId, name, color: '#2583e9' }));
+
+  it('opens every full name on click, including matching initials and overflow avatars', async () => {
+    await openWorkspace();
+    act(() => harness.onPresence!(people));
+    const trigger = screen.getByRole('button', { name: "Who's online (6)" });
+    expect(trigger).toHaveAttribute('aria-haspopup', 'dialog');
+    expect(trigger).toHaveTextContent('+2');
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+    fireEvent.click(trigger);
+    const list = screen.getByRole('list', { name: 'Online collaborators' });
+    expect(within(list).getAllByRole('listitem')).toHaveLength(6);
+    for (const person of people) expect(within(list).getByText(person.name)).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: 'Close dialog' }));
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+  });
+
+  it('updates the open list as collaborators join and leave', async () => {
+    await openWorkspace();
+    act(() => harness.onPresence!(people.slice(0, 1)));
+    fireEvent.click(screen.getByRole('button', { name: "Who's online (1)" }));
+    act(() => harness.onPresence!(people.slice(1, 3)));
+    const list = screen.getByRole('list', { name: 'Online collaborators' });
+    expect(within(list).queryByText('Alice Smith')).not.toBeInTheDocument();
+    expect(within(list).getByText('Alice Stone')).toBeInTheDocument();
+    expect(within(list).getByText('Bo')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: "Who's online (2)" })).toBeInTheDocument();
+    act(() => harness.onPresence!([]));
+    expect(screen.getByText('No active collaborators.')).toBeInTheDocument();
+    expect(screen.queryByRole('list')).not.toBeInTheDocument();
+  });
+
+  it('can open the empty list before presence arrives', async () => {
+    await openWorkspace();
+    fireEvent.click(screen.getByRole('button', { name: "Who's online (0)" }));
+    expect(screen.getByRole('dialog', { name: "Who's online" })).toHaveTextContent('No active collaborators.');
+  });
+});
 
 it('compiles the open file rather than the stored project default', async () => {
   harness.api.compile.mockResolvedValue({ job: { id: 'job', status: 'queued', createdAt: new Date().toISOString() } });

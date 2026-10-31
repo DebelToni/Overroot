@@ -252,9 +252,16 @@ button:disabled { cursor: default; opacity: .42; }
 .project-crumb span { font-size: 13px; font-weight: 600; }
 .project-crumb small { margin-top: 4px; color: var(--muted); font: 650 11px/1 var(--mono); letter-spacing: .06em; }
 .workspace-actions { min-width: 0; margin-left: auto; display: flex; align-items: center; gap: 8px; }
+.presence-trigger { min-height: 44px; flex-shrink: 0; display: flex; align-items: center; gap: 7px; padding: 0 6px; border: 0; background: transparent; color: var(--muted); font-size: 12px; cursor: pointer; }
+.presence-trigger:hover { background: var(--surface); color: var(--ink); }
+.presence-mobile-icon { display: none; }
 .presence-stack { display: flex; align-items: center; padding-left: 8px; }
 .presence-avatar, .presence-more { width: 28px; height: 28px; display: grid; place-items: center; margin-left: -7px; border: 2px solid var(--paper); border-radius: 50%; background: var(--person-color, var(--surface-2)); color: white; font: 700 11px/1 var(--sans); }
 .presence-more { background: var(--surface-2); color: var(--muted); }
+.presence-list { display: grid; gap: 16px; margin: 0; padding: 0; list-style: none; }
+.presence-list li { min-width: 0; display: flex; align-items: center; gap: 12px; overflow-wrap: anywhere; }
+.presence-list .presence-avatar { flex: 0 0 28px; margin: 0; }
+.presence-list li > span:last-child { min-width: 0; }
 .live-activity { min-width: 0; max-width: 240px; display: flex; align-items: center; gap: 6px; overflow: hidden; color: var(--accent); font: 680 11px/1 var(--mono); text-overflow: ellipsis; white-space: nowrap; }
 .compile-progress { height: 2px; background: var(--surface-2); overflow: hidden; }
 .compile-progress i { display: block; width: 0; height: 100%; background: var(--accent); }
@@ -443,6 +450,9 @@ button:disabled { cursor: default; opacity: .42; }
   .workspace-head .project-crumb span { font-size: 12px; }
   .workspace-head .project-crumb small { font-size: 10px; }
   .workspace-actions { gap: 4px; }
+  .presence-trigger { min-width: 44px; gap: 4px; }
+  .presence-mobile-icon { display: block; }
+  .presence-online-label { display: none; }
   .compile-button { min-width: 90px; height: 44px; min-height: 44px; }
   .mobile-tabs { display: grid; grid-template-columns: repeat(3, 1fr); border-bottom: 1px solid var(--line); }
   .mobile-tabs button { position: relative; display: flex; align-items: center; justify-content: center; gap: 6px; border: 0; border-radius: 0; background: var(--paper); color: var(--muted); font-size: 11px; font-weight: 700; }
