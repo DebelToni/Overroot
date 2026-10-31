@@ -398,6 +398,7 @@ export class Compiler {
         config.dockerContainer,
         '--restart',
         'unless-stopped',
+        '--init',
         '--cpus=2',
         '--memory=1g',
         '--pids-limit=128',
@@ -452,6 +453,7 @@ function workerMatches(containerJson: string, imageJson: string, jobsDir: string
       container.Image === image.Id &&
       container.Config?.Image === config.dockerImage &&
       container.Config?.User === 'tectonic' &&
+      container.HostConfig?.Init === true &&
       container.HostConfig?.ReadonlyRootfs === true &&
       container.HostConfig?.Memory === 1024 * 1024 * 1024 &&
       container.HostConfig?.PidsLimit === 128 &&
