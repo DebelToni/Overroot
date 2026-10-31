@@ -21,10 +21,10 @@ vi.mock('../components/WorkspaceDialogs', async (importOriginal) => {
 });
 vi.mock('../components/ManuscriptPane', async () => {
   const { useEffect } = await import('react');
-  return { ManuscriptPane: function Pane({ onFlushReady, onPresence }: { onFlushReady: (flush: (() => Promise<void>) | null) => void; onPresence: NonNullable<typeof harness.onPresence> }) {
+  return { ManuscriptPane: function Pane({ onFlushReady, onPresence, entryFile }: { onFlushReady: (flush: (() => Promise<void>) | null) => void; onPresence: NonNullable<typeof harness.onPresence>; entryFile: string }) {
     useEffect(() => { harness.onPresence = onPresence; }, [onPresence]);
     useEffect(() => { onFlushReady(() => harness.flush()); return () => onFlushReady(null); }, [onFlushReady]);
-    return <div>Manuscript test editor</div>;
+    return <div>Manuscript test editor<span data-testid="manuscript-entry">{entryFile}</span></div>;
   } };
 });
 vi.mock('../components/EditorPane', async () => {
@@ -45,6 +45,7 @@ function deferred<T>() {
 }
 beforeEach(() => {
   vi.resetAllMocks();
+  window.localStorage.clear();
   harness.flush.mockImplementation(async () => {});
   harness.api.getProject.mockResolvedValue({ project: { hash: 'project', name: 'Paper', entryFile: 'main.tex', role: 'owner', canWrite: true, canManage: true, memberCount: 1 } });
   harness.api.listFiles.mockResolvedValue({ files: [main, result] });
@@ -54,7 +55,7 @@ beforeEach(() => {
 afterEach(cleanup);
 async function openWorkspace() {
   render(<MemoryRouter initialEntries={['/project/project']}><Routes><Route path="/project/:hash" element={<WorkspacePage/>}/></Routes></MemoryRouter>);
-  await screen.findByText('Manuscript test editor');
+  await screen.findByText(/(?:Manuscript|File) test editor/);
 }
 function startFileMutation(operation: string, path: string, content: string, renamePath?: string) {
   if (operation === 'create') {
@@ -73,6 +74,65 @@ function startFileMutation(operation: string, path: string, content: string, ren
     fireEvent.change(upload, { target: { files: [source] } });
   }
 }
+
+describe('source view persistence', () => {
+  it.each(['files', 'manuscript'])('restores the last opened file and %s mode after a remount', async (mode) => {
+    await openWorkspace();
+    fireEvent.click(screen.getByRole('button', { name: 'result.tex' }));
+    await screen.findByText(result.content);
+    if (mode === 'manuscript') {
+      fireEvent.click(screen.getByRole('button', { name: 'Manuscript' }));
+      await screen.findByText('Manuscript test editor');
+    }
+    cleanup();
+    harness.api.getFile.mockClear();
+    await openWorkspace();
+    expect(harness.api.getFile).toHaveBeenCalledWith('project', result.id);
+    expect(screen.getByRole('button', { name: result.path }).closest('.tree-file')).toHaveClass('is-active');
+    expect(screen.getByRole('button', { name: mode === 'files' ? 'Files' : 'Manuscript' })).toHaveAttribute('aria-pressed', 'true');
+    if (mode === 'files') expect(screen.getByText(result.content)).toBeInTheDocument();
+    else expect(screen.getByTestId('manuscript-entry')).toHaveTextContent(result.path);
+  });
+
+  it('restores a renamed file by its stable ID', async () => {
+    await openWorkspace();
+    fireEvent.click(screen.getByRole('button', { name: result.path }));
+    await screen.findByText(result.content);
+    cleanup();
+    const renamed = { ...result, path: 'renamed.tex' };
+    harness.api.listFiles.mockResolvedValue({ files: [main, renamed] });
+    harness.api.getFile.mockResolvedValue({ file: renamed });
+    await openWorkspace();
+    expect(screen.getByRole('button', { name: renamed.path }).closest('.tree-file')).toHaveClass('is-active');
+  });
+
+  it('falls back to the project default if the remembered file was deleted', async () => {
+    await openWorkspace();
+    fireEvent.click(screen.getByRole('button', { name: result.path }));
+    await screen.findByText(result.content);
+    cleanup();
+    harness.api.listFiles.mockResolvedValue({ files: [main] });
+    await openWorkspace();
+    expect(screen.getByText(main.content)).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: main.path }).closest('.tree-file')).toHaveClass('is-active');
+    cleanup();
+    harness.api.listFiles.mockResolvedValue({ files: [main, result] });
+    await openWorkspace();
+    expect(screen.getByText(main.content)).toBeInTheDocument();
+  });
+
+  it('keeps the last opened file when a newer selection fails', async () => {
+    await openWorkspace();
+    fireEvent.click(screen.getByRole('button', { name: result.path }));
+    await screen.findByText(result.content);
+    harness.api.getFile.mockRejectedValueOnce(new Error('Could not open file'));
+    fireEvent.click(screen.getByRole('button', { name: main.path }));
+    await screen.findByText('Could not open file');
+    cleanup();
+    await openWorkspace();
+    expect(screen.getByText(result.content)).toBeInTheDocument();
+  });
+});
 
 describe('online collaborators', () => {
   const people = ['Alice Smith', 'Alice Stone', 'Bo', 'Charlie', 'Dana', 'Eli'].map((name, clientId) => ({ clientId, name, color: '#2583e9' }));
