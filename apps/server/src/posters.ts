@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import { posterTemplateFiles } from './poster-template-files.js';
+import { posterLicense, posterTemplateFiles } from './poster-template-files.js';
 
 export const posterThemes = ['academic-classic', 'modern-ml', 'visual-results'] as const;
 export const posterOptionsSchema = z.object({
@@ -37,7 +37,7 @@ function texEscape(value: string): string {
     '\\': '\\textbackslash{}', '{': '\\{', '}': '\\}', '%': '\\%', '$': '\\$',
     '&': '\\&', '#': '\\#', '_': '\\_', '^': '\\textasciicircum{}', '~': '\\textasciitilde{}'
   };
-  return value.replace(/[\\{}%$&#_^~]/g, (character) => chars[character]!);
+  return value.replace(/\s+/g, ' ').replace(/[\\{}%$&#_^~]/g, (character) => chars[character]!);
 }
 
 export function posterFiles(theme: typeof posterThemes[number], title: string, input?: PosterOptions): Record<string, string> {
@@ -58,5 +58,5 @@ export function posterFiles(theme: typeof posterThemes[number], title: string, i
     `\\def\\PosterHeadingSize{40}`, `\\def\\PosterTitleSize{68}`,
     ''
   ].join('\n');
-  return { ...source, 'config.tex': config };
+  return { ...source, 'config.tex': config, 'OVERPOSTER-LICENSE.txt': posterLicense };
 }

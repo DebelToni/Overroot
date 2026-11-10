@@ -72,17 +72,16 @@ export function PdfViewer({
     void task.promise
       .then(async (pdf) => {
         if (cancelled || !pages.current) return;
-        setPageCount(pdf.numPages);
-        if (poster && pdf.numPages) {
-          const first = await pdf.getPage(1);
-          const physical = first.getViewport({ scale: 1 });
-          if (!cancelled) setPrintSize(pageMillimetres(physical.width, physical.height));
-        }
+        let measuredSize: { width: number; height: number } | null = null;
         const fragment = document.createDocumentFragment();
         const renderJobs: Promise<unknown>[] = [];
         for (let number = 1; number <= pdf.numPages; number += 1) {
           const pdfPage = await pdf.getPage(number);
           if (cancelled) return;
+          if (poster && number === 1) {
+            const physical = pdfPage.getViewport({ scale: 1 });
+            measuredSize = pageMillimetres(physical.width, physical.height);
+          }
           const viewport = pdfPage.getViewport({ scale: zoom });
           const ratio = rasterScale(viewport.width, viewport.height, window.devicePixelRatio || 1);
           const wrapper = document.createElement('div');
@@ -108,6 +107,8 @@ export function PdfViewer({
         pages.current.replaceChildren(fragment);
         await Promise.all(renderJobs);
         if (cancelled) return;
+        setPageCount(pdf.numPages);
+        setPrintSize(measuredSize);
         setRendering(false);
         documentStatus.current?.(data, 'ready');
         setPage(Math.min(preserved.current.page, pdf.numPages));
@@ -335,15 +336,15 @@ export function PdfViewer({
           <button type="button" className="icon-button" disabled={zoom >= 2.5} onClick={() => adjustZoom(0.1)} aria-label="Zoom in"><Plus size={14}/></button>
         </div>
         <span className="pdf-toolbar__spacer"/>
-        {poster && printSize && <span className="poster-print-status" role="status" title="Measured from the compiled PDF; verify against your print order before printing">
-          {pageCount === 1 ? '1 page' : `${pageCount} pages — check layout`} · {printSize.width} × {printSize.height} mm
-        </span>}
         <button type="button" className="icon-button" disabled={!data} onClick={download} aria-label="Download PDF"><Download size={15}/></button>
         <button type="button" className="icon-button" onClick={() => onFocusMode(!focusMode)} aria-label={focusMode ? 'Return to editor' : 'Show only PDF'}>
           {focusMode ? <X size={16}/> : <Maximize2 size={15}/>} 
         </button>
       </div>
       <div ref={scroller} className="pdf-scroll" onScroll={trackPage}>
+        {poster && printSize && <div className="poster-print-status" role="status">
+          {pageCount === 1 ? '1 page' : `${pageCount} pages: check layout`} · {printSize.width} × {printSize.height} mm
+        </div>}
         {!data && !loading && <div className="pdf-empty"><strong>No PDF yet.</strong><span>Compile the project to see it here.</span></div>}
         {(loading || rendering) && <div className="pdf-loading"><span className="status-dot status-dot--working"/> Rendering PDF…</div>}
         {error && <div className="pdf-empty pdf-empty--error"><strong>Preview failed.</strong><span>{error}</span></div>}

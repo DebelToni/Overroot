@@ -137,7 +137,7 @@ Requirements, host setup, runtime paths, deployment commands, and recovery are d
 
 ## Compilation isolation
 
-The first real compile builds `overroot-tectonic:0.16.9` if necessary and starts `overroot-tectonic-worker`. It runs as an unprivileged user with dropped capabilities, a read-only root filesystem, PID/CPU/memory limits, Tectonic `--untrusted`, and a compile timeout. Only the jobs directory is writable; downloaded packages remain in the `overroot-tectonic-cache` Docker volume.
+The first real compile builds `overroot-tectonic:0.16.9-posters-v1` if necessary and starts `overroot-tectonic-worker`. It runs as an unprivileged user with dropped capabilities, a read-only root filesystem, PID/CPU/memory limits, Tectonic `--untrusted`, and a compile timeout. Only the jobs directory is writable; downloaded packages remain in the `overroot-tectonic-cache` Docker volume.
 
 The cache key includes the entry file, compiler context, flags, paths, and every source revision. An identical project state reuses its existing PDF immediately.
 

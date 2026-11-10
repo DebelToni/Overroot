@@ -63,14 +63,13 @@ export function NewProjectDialog({
         <label className="field"><span>Affiliation</span><input value={poster.affiliation} onChange={(event) => setPoster({ ...poster, affiliation: event.target.value })} maxLength={500}/></label>
         <div className="poster-setup__row">
           <label className="field"><span>Print size</span><select value={poster.size} onChange={(event) => setPoster({ ...poster, size: event.target.value as PosterOptions['size'] })}><option>A1</option><option>A0</option><option value="custom">Custom</option></select></label>
-          <label className="field"><span>Orientation</span><select value={poster.orientation} onChange={(event) => setPoster({ ...poster, orientation: event.target.value as PosterOptions['orientation'] })}><option value="landscape">Landscape</option><option value="portrait">Portrait</option></select></label>
+          {poster.size !== 'custom' && <label className="field"><span>Orientation</span><select value={poster.orientation} onChange={(event) => setPoster({ ...poster, orientation: event.target.value as PosterOptions['orientation'] })}><option value="landscape">Landscape</option><option value="portrait">Portrait</option></select></label>}
           <label className="field"><span>Columns</span><select value={poster.columns} onChange={(event) => setPoster({ ...poster, columns: Number(event.target.value) as PosterOptions['columns'] })}><option value="2">2</option><option value="3">3</option><option value="4">4</option></select></label>
         </div>
         {poster.size === 'custom' && <div className="poster-setup__row">
           <label className="field"><span>Width (mm)</span><input type="number" min="200" max="3000" required value={poster.widthMm ?? ''} onChange={(event) => setPoster({ ...poster, widthMm: event.target.value ? Number(event.target.value) : undefined })}/></label>
           <label className="field"><span>Height (mm)</span><input type="number" min="200" max="3000" required value={poster.heightMm ?? ''} onChange={(event) => setPoster({ ...poster, heightMm: event.target.value ? Number(event.target.value) : undefined })}/></label>
         </div>}
-        <p className="dialog-copy">Edit poster sections and config.tex in Files after creation. Add vector PDF figures to figures/.</p>
       </fieldset>}
       <InlineError message={error}/>
       {busy && <p className="dialog-copy">You can close this dialog while the project is created.</p>}

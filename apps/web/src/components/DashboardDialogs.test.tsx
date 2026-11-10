@@ -46,6 +46,7 @@ it('passes poster dimensions and metadata when a poster template is selected', a
   fireEvent.change(screen.getByLabelText('Project name'), { target: { value: 'My poster' } });
   fireEvent.change(screen.getByLabelText('Authors'), { target: { value: 'Research Team' } });
   fireEvent.change(screen.getByLabelText('Print size'), { target: { value: 'custom' } });
+  expect(screen.queryByLabelText('Orientation')).not.toBeInTheDocument();
   fireEvent.change(screen.getByLabelText('Width (mm)'), { target: { value: '1000' } });
   fireEvent.change(screen.getByLabelText('Height (mm)'), { target: { value: '700' } });
   await act(async () => { fireEvent.submit(screen.getByLabelText('Project name').closest('form')!); });
