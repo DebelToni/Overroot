@@ -37,6 +37,7 @@ Overroot is independent and unaffiliated with Overleaf or Underleaf.ai.
 - PDF viewer that preserves page, zoom, and exact scroll position after recompilation
 - One-click PDF-only mode with `Escape` to return
 - Article, report, presentation, and blank templates; file uploads and ZIP import/export
+- Academic Classic, Modern ML, and Visual Results poster templates with A0, A1, and custom print sizes
 - Light, dark, and system appearance across desktop and mobile layouts
 - Project-scoped, revocable credentials for external agents
 - SQLite persistence plus an online backup command with bounded snapshot retention
@@ -85,6 +86,8 @@ exports always use the original project files.
 ### 3. Compile and review
 
 Open a `.tex` file and select **Compile** to flush the current collaborative editor state and run Tectonic on that file. Every editor can compile the file they opened; no owner-selected main file is needed. Successful output appears in the PDF pane for every connected collaborator. A completely empty document body has no printable page, so add content between `\begin{document}` and `\end{document}` before compiling a blank template.
+
+For a poster, choose one of the poster templates at project creation and set its size, orientation, columns, and heading metadata. Edit the modular `sections/*.tex` files in **Files**, compile `poster.tex`, and review the PDF's measured page count and physical dimensions before downloading. See [poster guide](docs/POSTERS.md).
 
 ## External agent access
 

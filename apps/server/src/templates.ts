@@ -1,3 +1,6 @@
+import { posterTemplateFiles } from './poster-template-files.js';
+import { posterThemes } from './posters.js';
+
 export interface ProjectTemplate {
   id: string;
   name: string;
@@ -88,7 +91,14 @@ Start writing here.
     files: {
       'main.tex': '\\documentclass{article}\n\\begin{document}\n\n\\end{document}\n'
     }
-  }
+  },
+  ...posterThemes.map((theme) => ({
+    id: theme,
+    name: ({ 'academic-classic': 'Academic Classic poster', 'modern-ml': 'Modern ML poster', 'visual-results': 'Visual Results poster' })[theme],
+    description: 'A large-format research poster with modular sections and a print-ready page.',
+    entryFile: 'poster.tex',
+    files: posterTemplateFiles[theme]!
+  }))
 ];
 
 export function findTemplate(id: string): ProjectTemplate | undefined {

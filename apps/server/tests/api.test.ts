@@ -40,6 +40,29 @@ function bearer(token: string) {
 }
 
 describe('Overroot API', () => {
+  it('creates poster projects inside the normal permission and file model', async () => {
+    const { app, adminToken } = harness!;
+    const created = await app.inject({
+      method: 'POST', url: '/api/v1/projects', headers: bearer(adminToken),
+      payload: { name: 'Poster & Results', template: 'visual-results', poster: {
+        subtitle: 'Example', authors: 'A. Scientist', affiliation: 'Institute',
+        size: 'A0', orientation: 'portrait', columns: 3
+      } }
+    });
+    expect(created.statusCode).toBe(201);
+    expect(created.json().project.entryFile).toBe('poster.tex');
+    const files = await app.inject({ method: 'GET', url: `/api/v1/projects/${created.json().project.hash}/files`, headers: bearer(adminToken) });
+    expect(files.statusCode).toBe(200);
+    const paths = files.json().files.map((file: { path: string }) => file.path);
+    expect(paths).toContain('config.tex');
+    expect(paths).toContain('poster-layout.tex');
+    expect(paths).toContain('sections/results.tex');
+    const invalid = await app.inject({ method: 'POST', url: '/api/v1/projects', headers: bearer(adminToken), payload: {
+      name: 'Invalid', template: 'visual-results', poster: { size: 'custom', widthMm: 100 }
+    } });
+    expect(invalid.statusCode).toBe(400);
+  });
+
   it('reports the canonical public URL and API contract', async () => {
     const { app } = harness!;
     const status = await app.inject({ method: 'GET', url: '/api/v1/status' });

@@ -192,7 +192,7 @@ function ProjectWorkspace({ hash }: { hash: string }) {
         ?? fileResponse.files.find((file) => file.path === projectResponse.project.entryFile)
         ?? fileResponse.files[0];
       if (initial) setSelected((await api.getFile(hash, initial.id)).file);
-      setEditorMode(savedSource?.mode ?? 'manuscript');
+      setEditorMode(savedSource?.mode ?? (projectResponse.project.entryFile === 'poster.tex' ? 'files' : 'manuscript'));
       const previewJob = compileResponse.job?.status === 'succeeded' ? compileResponse.job : compileResponse.lastSuccessfulJob;
       if (previewJob?.hasPdf && (accepted || !currentJob.current?.hasPdf)) await loadPdf(previewJob);
     } catch (reason) { setError(reason instanceof Error ? reason.message : 'Could not open project'); }
@@ -451,7 +451,7 @@ function ProjectWorkspace({ hash }: { hash: string }) {
             : <EditorPane api={api} projectHash={hash} file={selected} user={user} canWrite={project.canWrite} dark={theme.resolved === 'dark'} onPresence={onPresence} onFlushReady={onFlushReady} onCursorChange={onCursorChange}/>}</Suspense>
         </div>
         <div className="split-handle" role="separator" aria-orientation="vertical" onPointerDown={resizeStart}/>
-        <div className="pdf-wrap"><Suspense fallback={<LoadingBlock label="Loading PDF viewer"/>}><PdfViewer key={hash} api={api} projectHash={hash} data={pdf} revision={pdfRevision} synctexJobId={pdfJobId} sourceLocation={sourceLocation} loading={pdfLoading || compiling} focusMode={focusPdf} onFocusMode={setFocusPdf} projectName={project.name} onDocumentStatus={onPdfDocumentStatus}/></Suspense></div>
+        <div className="pdf-wrap"><Suspense fallback={<LoadingBlock label="Loading PDF viewer"/>}><PdfViewer key={hash} api={api} projectHash={hash} data={pdf} revision={pdfRevision} synctexJobId={pdfJobId} sourceLocation={sourceLocation} loading={pdfLoading || compiling} focusMode={focusPdf} onFocusMode={setFocusPdf} projectName={project.name} poster={project.entryFile === 'poster.tex'} onDocumentStatus={onPdfDocumentStatus}/></Suspense></div>
       </div>
     </main>
     <footer className="workspace-status">

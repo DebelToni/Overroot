@@ -3,6 +3,7 @@ import { useEffect, useRef, useState } from 'react';
 import { GlobalWorkerOptions, getDocument } from 'pdfjs-dist';
 import type { ApiClient } from '../lib/api';
 import { paintPdfHighlights } from '../lib/pdf-highlight';
+import { pageMillimetres, rasterScale } from '../lib/pdf-raster';
 import {
   afterLayout, capturePdfViewState, loadStoredPdfViewState, restorePdfViewState,
   storePdfViewState, type PdfViewState
@@ -22,6 +23,7 @@ export function PdfViewer({
   focusMode,
   onFocusMode,
   projectName,
+  poster,
   onDocumentStatus
 }: {
   api: ApiClient;
@@ -34,6 +36,7 @@ export function PdfViewer({
   focusMode: boolean;
   onFocusMode: (focused: boolean) => void;
   projectName: string;
+  poster?: boolean;
   onDocumentStatus?: (data: ArrayBuffer, status: 'ready' | 'failed') => void;
 }) {
   const scroller = useRef<HTMLDivElement>(null);
@@ -47,6 +50,7 @@ export function PdfViewer({
   zoomRef.current = zoom;
   const [page, setPage] = useState(initialView.page);
   const [pageCount, setPageCount] = useState(0);
+  const [printSize, setPrintSize] = useState<{ width: number; height: number } | null>(null);
   const [rendering, setRendering] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [sourceHighlights, setSourceHighlights] = useState<SyncTexHighlight[]>([]);
@@ -57,6 +61,7 @@ export function PdfViewer({
     if (!data || !pages.current) {
       if (pages.current) pages.current.replaceChildren();
       setPageCount(0);
+      setPrintSize(null);
       return;
     }
     let cancelled = false;
@@ -68,13 +73,18 @@ export function PdfViewer({
       .then(async (pdf) => {
         if (cancelled || !pages.current) return;
         setPageCount(pdf.numPages);
+        if (poster && pdf.numPages) {
+          const first = await pdf.getPage(1);
+          const physical = first.getViewport({ scale: 1 });
+          if (!cancelled) setPrintSize(pageMillimetres(physical.width, physical.height));
+        }
         const fragment = document.createDocumentFragment();
         const renderJobs: Promise<unknown>[] = [];
         for (let number = 1; number <= pdf.numPages; number += 1) {
           const pdfPage = await pdf.getPage(number);
           if (cancelled) return;
           const viewport = pdfPage.getViewport({ scale: zoom });
-          const ratio = Math.min(window.devicePixelRatio || 1, 2);
+          const ratio = rasterScale(viewport.width, viewport.height, window.devicePixelRatio || 1);
           const wrapper = document.createElement('div');
           wrapper.className = 'pdf-page';
           wrapper.dataset.page = String(number);
@@ -82,8 +92,8 @@ export function PdfViewer({
           wrapper.style.height = `${viewport.height}px`;
           wrapper.setAttribute('aria-label', `PDF page ${number}`);
           const canvas = document.createElement('canvas');
-          canvas.width = Math.floor(viewport.width * ratio);
-          canvas.height = Math.floor(viewport.height * ratio);
+          canvas.width = Math.max(1, Math.floor(viewport.width * ratio));
+          canvas.height = Math.max(1, Math.floor(viewport.height * ratio));
           canvas.style.width = `${viewport.width}px`;
           canvas.style.height = `${viewport.height}px`;
           wrapper.append(canvas);
@@ -120,7 +130,7 @@ export function PdfViewer({
       cancelled = true;
       void task.destroy();
     };
-  }, [data, revision, zoom]);
+  }, [data, revision, zoom, poster]);
 
   useEffect(() => {
     let cancelled = false;
@@ -325,6 +335,9 @@ export function PdfViewer({
           <button type="button" className="icon-button" disabled={zoom >= 2.5} onClick={() => adjustZoom(0.1)} aria-label="Zoom in"><Plus size={14}/></button>
         </div>
         <span className="pdf-toolbar__spacer"/>
+        {poster && printSize && <span className="poster-print-status" role="status" title="Measured from the compiled PDF; verify against your print order before printing">
+          {pageCount === 1 ? '1 page' : `${pageCount} pages — check layout`} · {printSize.width} × {printSize.height} mm
+        </span>}
         <button type="button" className="icon-button" disabled={!data} onClick={download} aria-label="Download PDF"><Download size={15}/></button>
         <button type="button" className="icon-button" onClick={() => onFocusMode(!focusMode)} aria-label={focusMode ? 'Return to editor' : 'Show only PDF'}>
           {focusMode ? <X size={16}/> : <Maximize2 size={15}/>} 

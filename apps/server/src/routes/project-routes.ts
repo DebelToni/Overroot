@@ -7,6 +7,7 @@ import { config } from '../config.js';
 import type { AppContext } from '../context.js';
 import { HttpError } from '../errors.js';
 import { projectAccess, requireOwner } from '../permissions.js';
+import { posterOptionsSchema } from '../posters.js';
 import { safeUnzip } from '../safe-zip.js';
 import { randomToken, sha256 } from '../security.js';
 import { projectTemplates } from '../templates.js';
@@ -31,8 +32,8 @@ export function registerProjectRoutes(app: FastifyInstance, context: AppContext)
 
   app.post('/api/v1/projects', async (request, reply) => {
     const actor = context.auth.requireUser(request);
-    const input = z.object({ name: z.string(), template: z.string().default('article') }).parse(request.body);
-    const project = context.projects.createProject(actor.id, input.name, input.template);
+    const input = z.object({ name: z.string(), template: z.string().default('article'), poster: posterOptionsSchema.optional() }).parse(request.body);
+    const project = context.projects.createProject(actor.id, input.name, input.template, input.poster);
     audit(context.db, project.id, actorIdentity(actor), 'project.created', { template: input.template });
     return reply.code(201).send({ project: projectDetail(context, project.public_hash, actor) });
   });

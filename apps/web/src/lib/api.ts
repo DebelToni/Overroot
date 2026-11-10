@@ -6,6 +6,7 @@ import type {
   ProjectDetail,
   ProjectFile,
   ProjectMember,
+  PosterOptions,
   ProjectSummary,
   SyncTexHighlight,
   Template,
@@ -92,10 +93,10 @@ export class ApiClient {
     return this.request<{ templates: Template[] }>('/api/v1/templates');
   }
 
-  createProject(name: string, template: string) {
+  createProject(name: string, template: string, poster?: PosterOptions) {
     return this.request<{ project: ProjectDetail }>('/api/v1/projects', {
       method: 'POST',
-      body: JSON.stringify({ name, template })
+      body: JSON.stringify({ name, template, ...(poster ? { poster } : {}) })
     });
   }
 
