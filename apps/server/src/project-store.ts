@@ -4,6 +4,7 @@ import * as Y from 'yjs';
 import type { Database } from './database.js';
 import { HttpError } from './errors.js';
 import { isTextMime, normalizeProjectPath } from './paths.js';
+import { isPosterTheme, posterFiles, type PosterOptions } from './posters.js';
 import { fileRevision, randomPublicId } from './security.js';
 import { findTemplate } from './templates.js';
 import type { ActorIdentity, FileRecord, ProjectRecord, ProjectRole } from './types.js';
@@ -18,10 +19,12 @@ export interface ProjectSummary extends ProjectRecord {
 export class ProjectStore {
   constructor(private readonly db: Database) {}
 
-  createProject(ownerId: string, nameInput: string, templateId = 'article'): ProjectRecord {
+  createProject(ownerId: string, nameInput: string, templateId = 'article', poster?: PosterOptions): ProjectRecord {
     const name = cleanProjectName(nameInput);
     const template = findTemplate(templateId);
     if (!template) throw new HttpError(400, 'Unknown project template', 'unknown_template');
+    if (poster && !isPosterTheme(templateId)) throw new HttpError(400, 'Poster settings require a poster template', 'invalid_poster_settings');
+    const initialFiles = isPosterTheme(templateId) ? posterFiles(templateId, name, poster) : template.files;
     const now = new Date().toISOString();
     const project: ProjectRecord = {
       id: randomUUID(),
@@ -51,7 +54,7 @@ export class ProjectStore {
         'owner',
         now
       );
-      for (const [path, content] of Object.entries(template.files)) {
+      for (const [path, content] of Object.entries(initialFiles)) {
         this.insertFile(project.id, path, Buffer.from(content), 'text/plain', { type: 'system', id: 'template', name: template.name }, now);
       }
     });

@@ -39,3 +39,16 @@ it('opens central account controls instead of collecting a password', async () =
   expect(screen.getByRole('link', { name: 'Manage account' })).toHaveAttribute('href', 'https://overroot.toni.foo/api/v1/auth/account');
   expect(container.querySelector('input')).toBeNull();
 });
+
+it('passes poster dimensions and metadata when a poster template is selected', async () => {
+  const onCreate = vi.fn().mockResolvedValue(undefined);
+  render(<NewProjectDialog open templates={[{ id: 'modern-ml', name: 'Modern ML poster', description: 'Poster', entryFile: 'poster.tex' }]} onCreate={onCreate} onClose={vi.fn()}/>);
+  fireEvent.change(screen.getByLabelText('Project name'), { target: { value: 'My poster' } });
+  fireEvent.change(screen.getByLabelText('Authors'), { target: { value: 'Research Team' } });
+  fireEvent.change(screen.getByLabelText('Print size'), { target: { value: 'custom' } });
+  expect(screen.queryByLabelText('Orientation')).not.toBeInTheDocument();
+  fireEvent.change(screen.getByLabelText('Width (mm)'), { target: { value: '1000' } });
+  fireEvent.change(screen.getByLabelText('Height (mm)'), { target: { value: '700' } });
+  await act(async () => { fireEvent.submit(screen.getByLabelText('Project name').closest('form')!); });
+  expect(onCreate).toHaveBeenCalledWith('My poster', 'modern-ml', expect.objectContaining({ authors: 'Research Team', size: 'custom', widthMm: 1000, heightMm: 700 }));
+});

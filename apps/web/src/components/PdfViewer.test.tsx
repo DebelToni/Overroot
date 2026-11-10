@@ -38,6 +38,34 @@ it('reports parser rejection with the exact downloaded buffer identity', async (
   expect(props.onDocumentStatus).toHaveBeenCalledExactlyOnceWith(props.data, 'failed');
 });
 
+it('measures poster size independently of zoom and reports multiple pages', async () => {
+  const pdf = { numPages: 2, getPage: vi.fn(async () => ({ getViewport: ({ scale }: { scale: number }) => ({ width: 841 * 72 / 25.4 * scale, height: 594 * 72 / 25.4 * scale }) })) };
+  parser.getDocument.mockImplementation(() => ({ promise: Promise.resolve(pdf), destroy: vi.fn() }));
+  const props = properties();
+  render(<PdfViewer {...props} poster/>);
+  await waitFor(() => expect(props.onDocumentStatus).toHaveBeenCalledWith(props.data, 'ready'));
+  expect(screen.getByRole('status')).toHaveTextContent('2 pages: check layout · 841 × 594 mm');
+  fireEvent.click(screen.getByLabelText('Zoom in'));
+  await waitFor(() => expect(screen.getByText('110%')).toBeInTheDocument());
+  expect(screen.getByRole('status')).toHaveTextContent('841 × 594 mm');
+  expect(screen.getByLabelText('PDF page 1').querySelector('canvas')!.width).toBeLessThanOrEqual(4096);
+});
+
+it('keeps measurements from the last good poster when replacement parsing fails', async () => {
+  const props = properties();
+  parser.getDocument.mockImplementationOnce(() => ({ promise: Promise.resolve(document()), destroy: vi.fn() }));
+  const view = render(<PdfViewer {...props} poster/>);
+  await waitFor(() => expect(props.onDocumentStatus).toHaveBeenCalledWith(props.data, 'ready'));
+  const previous = screen.getByRole('status').textContent;
+  parser.getDocument.mockImplementation(() => ({ promise: Promise.reject(new Error('Broken replacement')), destroy: vi.fn() }));
+  view.rerender(<PdfViewer {...props} poster data={new ArrayBuffer(2)}/>);
+  await screen.findByText('Broken replacement');
+  expect(screen.getByRole('status').textContent).toBe(previous);
+  expect(screen.getByLabelText('PDF page 1')).toBeInTheDocument();
+  view.rerender(<PdfViewer {...props} poster data={null}/>);
+  expect(screen.queryByRole('status')).not.toBeInTheDocument();
+});
+
 it('confirms usable bytes after pages finish loading', async () => {
   const props = properties();
   parser.getDocument.mockImplementation(() => ({ promise: Promise.resolve(document()), destroy: vi.fn() }));

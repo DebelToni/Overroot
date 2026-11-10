@@ -9,7 +9,7 @@ import { ThemeControl } from '../components/ThemeControl';
 import { useTheme } from '../hooks/useTheme';
 import { initials, relativeTime } from '../lib/format';
 import { useSession } from '../lib/session';
-import type { ProjectSummary, Template } from '../types';
+import type { PosterOptions, ProjectSummary, Template } from '../types';
 
 export function DashboardPage() {
   const { api, user, clearSession } = useSession();
@@ -56,10 +56,10 @@ export function DashboardPage() {
     catch (reason) { setError(reason instanceof Error ? reason.message : 'Could not sign out. Try again.'); }
   }
 
-  async function create(name: string, template: string) {
+  async function create(name: string, template: string, poster?: PosterOptions) {
     const requestGeneration = generation.current;
     try {
-      const response = await api.createProject(name, template);
+      const response = await api.createProject(name, template, poster);
       if (requestGeneration !== generation.current) return;
       if (newVisible.current) navigate(`/project/${response.project.hash}`);
       else void load();

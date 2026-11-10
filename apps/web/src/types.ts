@@ -46,6 +46,17 @@ export interface Template {
   entryFile: string;
 }
 
+export interface PosterOptions {
+  subtitle: string;
+  authors: string;
+  affiliation: string;
+  size: 'A0' | 'A1' | 'custom';
+  orientation: 'landscape' | 'portrait';
+  widthMm?: number;
+  heightMm?: number;
+  columns: 2 | 3 | 4;
+}
+
 export interface ProjectFile {
   id: string;
   path: string;
